@@ -1,0 +1,2115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="appTitle">Tiddas - Jeu</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Noto+Serif:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+    <style>
+        :root {
+            --stone-dark: #2c2722; --stone-medium: #6a6054; --stone-light: #d0c4b2;
+            --wood-dark: #5a341f; --wood-medium: #7c4a2b; --wood-light: #9d603a;
+            --text-gold: #f0c850; --text-light: #f5f5f5; --danger-red: #ff4d4d;
+            --highlight-cyan: #00ffff; --transition-duration: 0.3s;
+            --board-border-dark: #201b17; --board-surface-light: #e0d4c2;
+            --cell-border: rgba(0,0,0,0.2);
+            --parchment-bg: #f5eeda;
+
+            --player1-stone-color-dark: #1a1a1a;
+            --player1-stone-color-light: #333333;
+            --player2-stone-color-dark: #cccccc;
+            --player2-stone-color-light: #ffffff;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        html { 
+            height: 100%; 
+            /* Fluid font size for better scaling */
+            font-size: clamp(14px, 1.5vw, 16px);
+        }
+        body {
+            height: 100vh; max-height: 100vh; overflow: hidden;
+            background: linear-gradient(135deg, #3a2d25, #2a201a); color: var(--text-light);
+            font-family: 'Noto Serif', serif; position: relative;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="%234a3d35" stroke-width="2" opacity="0.1"/><path d="M10,50 Q50,10 90,50 Q50,90 10,50 Z" fill="none" stroke="%234a3d35" stroke-width="1" opacity="0.05"/></svg>');
+            background-size: 80px; display: flex; flex-direction: column;
+            text-rendering: optimizeLegibility;
+        }
+
+        .stone-decoration {
+            position: absolute; width: min(15vw, 60px); height: min(15vw, 60px);
+            background: radial-gradient(circle at 30% 30%, var(--stone-medium), var(--stone-dark) 70%), linear-gradient(145deg, var(--stone-medium), var(--stone-dark));
+            border-radius: 50%; box-shadow: inset 0 -8px 15px rgba(0,0,0,0.3), 0 8px 15px rgba(0,0,0,0.4);
+            z-index: 0; display: flex; align-items: center; justify-content: center;
+            font-size: 1.7rem; color: var(--text-gold); text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            opacity: 0.7; transition: transform 0.5s ease, opacity 0.5s ease, box-shadow 0.3s ease;
+            filter: saturate(1.2); border: 2px solid rgba(240, 200, 80, 0.2);
+        }
+        .stone-1 { top: 3%; left: 3%; transform: rotate(20deg); }
+        .stone-2 { top: 3%; right: 3%; transform: rotate(-30deg); }
+        .stone-3 { bottom: 3%; left: 3%; transform: rotate(10deg); }
+        .stone-4 { bottom: 3%; right: 3%; transform: rotate(-15deg); }
+        
+        header { 
+            text-align: center; padding: 0.5rem 0; width: 100%; position: relative;
+            flex-shrink: 0; transition: opacity 0.3s ease, height 0.3s ease, padding 0.3s ease;
+            overflow: hidden;
+        }
+        header.hidden { opacity: 0; height: 0; padding: 0; pointer-events: none; }
+        h1 {
+            font-family: 'Cinzel', serif; font-size: clamp(2rem, 5vw, 2.8rem);
+            margin: 0; color: var(--text-gold); text-shadow: 3px 3px 5px rgba(0,0,0,0.6); 
+            letter-spacing: 3px;
+        }
+        
+        .language-selector { 
+            position: fixed; top: 1rem; right: 1.25rem; z-index: 1020;
+            display: flex; align-items: center; background: rgba(0,0,0,0.3);
+            border-radius: 8px; padding: 0.4rem 0.7rem; border: 1px solid rgba(240, 200, 80, 0.3);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4); transition: all 0.2s ease;
+        }
+        .language-selector:hover { background: rgba(240, 200, 80, 0.1); border-color: rgba(240, 200, 80, 0.5); }
+        .language-selector i { color: var(--text-gold); font-size: 1.1rem; margin-right: 8px; }
+        .language-selector select {
+            background: transparent; color: var(--text-gold); border: none; padding: 0;
+            font-family: 'Noto Serif', serif; font-size: 0.9rem; cursor: pointer; 
+            outline: none; appearance: none; -webkit-appearance: none; -moz-appearance: none; width: auto;
+        }
+        .language-selector select option { background: var(--stone-dark); color: var(--text-light); }
+
+        .game-container { 
+            flex-grow: 1; display: flex; align-items: center; justify-content: center;
+            width: 100%; padding: 1rem; min-height: 0; z-index: 1;
+        }
+
+        .selection-area {
+            display: none; flex-direction: column; align-items: center; gap: 1.5rem; 
+            width: 100%; max-width: 950px; /* Constrain width on large screens */
+            max-height: 90vh; overflow-y: auto;
+            padding: clamp(1.5rem, 4vw, 3rem); background: rgba(0,0,0,0.4); border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            border: 2px solid rgba(240, 200, 80, 0.5); animation: fadeInUp 0.5s ease forwards; opacity: 0;
+            position: relative; backdrop-filter: blur(3px);
+        }
+        .selection-area.active { display: flex; }
+        .selection-area h2 {
+            font-family: 'Cinzel', serif; font-size: clamp(1.8rem, 5vw, 2.5rem); color: var(--text-gold);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.6); margin-bottom: 1rem; text-align: center; letter-spacing: 1px;
+        }
+        @keyframes fadeInUp { to { opacity: 1; transform: translateY(0); } }
+        
+        .version-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; width: 100%; justify-content: center; }
+        .version-card { background: rgba(0,0,0,0.3); border: 1px solid rgba(240, 200, 80, 0.4); border-radius: 10px; padding: 1.2rem; display: flex; flex-direction: column; align-items: center; text-align: center; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 5px 15px rgba(0,0,0,0.4); position: relative; overflow: hidden; backdrop-filter: blur(3px); }
+        .version-card:hover { transform: translateY(-8px) scale(1.03); box-shadow: 0 12px 25px rgba(0,0,0,0.5), 0 0 20px rgba(240, 200, 80, 0.6); border-color: var(--text-gold); }
+        .version-card.active { background: var(--text-gold); color: var(--stone-dark); box-shadow: 0 0 25px rgba(240, 200, 80, 0.9), inset 0 0 15px rgba(0,0,0,0.5); border-color: var(--text-gold); transform: scale(1.05); }
+        .version-card h3 { font-family: 'Cinzel', serif; font-size: clamp(1.2rem, 4vw, 1.5rem); color: var(--text-gold); margin-bottom: 8px; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); transition: color var(--transition-duration) ease; }
+        .version-card.active h3 { color: var(--stone-dark); text-shadow: none; }
+        .version-card p { font-size: clamp(0.9rem, 2.5vw, 1rem); line-height: 1.5; color: var(--text-light); transition: color var(--transition-duration) ease; }
+        .version-card.active p { color: var(--stone-dark); }
+        
+        .rules-btn {
+            margin-top: 1rem; padding: 0.8rem 1.8rem; border-radius: 8px; background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(240, 200, 80, 0.4); color: var(--text-gold);
+            font-family: 'Cinzel', serif; font-size: 1.1rem; cursor: pointer;
+            transition: all 0.3s ease; display: flex; align-items: center; gap: 10px;
+        }
+        .rules-btn:hover { background: rgba(240, 200, 80, 0.15); border-color: var(--text-gold); transform: translateY(-3px); }
+
+        .options-group { display: flex; flex-wrap: wrap; justify-content: center; gap: 1.5rem; width: 100%; }
+        .option-btn { flex: 1; min-width: 200px; max-width: 280px; padding: 1.5rem; border-radius: 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(240, 200, 80, 0.4); color: var(--text-light); font-family: 'Cinzel', serif; font-size: clamp(1.1rem, 4vw, 1.3rem); cursor: pointer; transition: all 0.3s ease; display: flex; flex-direction: column; align-items: center; gap: 10px; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); box-shadow: 0 4px 10px rgba(0,0,0,0.3); backdrop-filter: blur(2px); }
+        .option-btn:hover { transform: translateY(-8px); background: rgba(240, 200, 80, 0.15); box-shadow: 0 12px 25px rgba(0,0,0,0.5), 0 0 20px rgba(240, 200, 80, 0.6); border-color: var(--text-gold); }
+        .option-btn[disabled] { cursor: not-allowed; opacity: 0.5; filter: grayscale(80%); }
+        .option-btn[disabled]:hover { transform: none; background: rgba(0,0,0,0.3); box-shadow: 0 4px 10px rgba(0,0,0,0.3); border-color: rgba(240, 200, 80, 0.4); }
+        .option-btn i { font-size: 2.8rem; color: var(--text-gold); filter: drop-shadow(0 0 5px rgba(240, 200, 80, 0.5)); }
+        .option-btn span { font-size: 1rem; font-family: 'Noto Serif', serif; opacity: 0.95; line-height: 1.4; }
+        .back-btn { padding: 0.7rem 1.8rem; border-radius: 25px; background: transparent; border: 1px solid rgba(240, 200, 80, 0.6); color: var(--text-gold); font-family: 'Noto Serif', serif; cursor: pointer; transition: all 0.3s ease; margin-top: 1rem; box-shadow: 0 2px 5px rgba(0,0,0,0.3); backdrop-filter: blur(1px); }
+        .back-btn:hover { background: rgba(240, 200, 80, 0.2); transform: translateY(-3px); box-shadow: 0 5px 10px rgba(0,0,0,0.4), 0 0 10px rgba(240, 200, 80, 0.4); }
+        
+        .player-setup-area { gap: 2rem; padding: 2.5rem; background: rgba(0,0,0,0.5); border: 2px solid var(--text-gold); box-shadow: 0 0 25px rgba(240, 200, 80, 0.7), inset 0 0 15px rgba(0,0,0,0.6); border-radius: 20px; backdrop-filter: blur(5px); }
+        .player-setup-area .setup-section { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 1.25rem; padding: 1.5rem; border: 1px solid rgba(240, 200, 80, 0.4); border-radius: 15px; background: rgba(0,0,0,0.3); box-shadow: inset 0 0 15px rgba(0,0,0,0.4); }
+        .player-setup-area .setup-section h3 { font-size: clamp(1.4rem, 4vw, 1.8rem); color: var(--text-gold); text-shadow: 1px 1px 3px rgba(0,0,0,0.7); margin-bottom: 1rem; }
+        .player-setup-area .input-group { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 450px; }
+        .player-setup-area label { font-size: clamp(1rem, 3vw, 1.2rem); color: var(--text-light); text-shadow: 1px 1px 2px rgba(0,0,0,0.5); }
+        .player-setup-area input[type="text"] { padding: 0.8rem 1.25rem; font-size: 1.1rem; border-radius: 8px; border: 1px solid rgba(240, 200, 80, 0.6); background: rgba(255,255,255,0.1); color: var(--text-light); outline: none; box-shadow: inset 0 2px 5px rgba(0,0,0,0.3); transition: all 0.3s ease; }
+        .player-setup-area input[type="text"]::placeholder { color: rgba(255,255,255,0.6); }
+        .player-setup-area input[type="text"]:focus { border-color: var(--highlight-cyan); box-shadow: inset 0 2px 5px rgba(0,0,0,0.5), 0 0 10px rgba(0,255,255,0.5); }
+        .player-setup-area .color-choice-group { display: flex; flex-wrap: wrap; justify-content: center; gap: 1.5rem; margin-top: 1.25rem; width: 100%; }
+        .player-setup-area .color-option { display: flex; flex-direction: column; align-items: center; gap: 0.8rem; padding: 1.25rem; border-radius: 15px; background: rgba(0,0,0,0.35); border: 2px solid rgba(240, 200, 80, 0.5); color: var(--text-light); font-family: 'Noto Serif', serif; font-size: clamp(1rem, 3vw, 1.15rem); cursor: pointer; transition: all 0.3s ease; box-shadow: 0 5px 15px rgba(0,0,0,0.4); position: relative; overflow: hidden; min-width: 180px; flex: 1; max-width: 220px; text-align: center; }
+        .player-setup-area .color-option:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.6), 0 0 15px rgba(240, 200, 80, 0.7); border-color: var(--text-gold); }
+        .player-setup-area .color-option.selected { background: linear-gradient(135deg, var(--text-gold), #e0b040); color: var(--stone-dark); border-color: var(--text-gold); box-shadow: 0 0 25px rgba(240, 200, 80, 0.9), inset 0 0 15px rgba(0,0,0,0.5); transform: scale(1.03); }
+        .player-setup-area .color-option input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+        .player-setup-area .color-option .stone-preview { width: 70px; height: 70px; border-radius: 50%; box-shadow: 0 5px 15px rgba(0,0,0,0.6), inset 0 -5px 15px rgba(0,0,0,0.5), inset 0 5px 10px rgba(255,255,255,0.4); transition: all 0.3s ease; }
+        .player-setup-area .color-option.selected .stone-preview { box-shadow: 0 0 0 5px rgba(255,255,255,0.5), 0 5px 15px rgba(0,0,0,0.6), inset 0 -5px 15px rgba(0,0,0,0.5); }
+        .player-setup-area .color-option .stone-preview.player1 { background: radial-gradient(circle at 35% 35%, var(--player1-stone-color-light), var(--player1-stone-color-dark) 60%, #000 90%); }
+        .player-setup-area .color-option .stone-preview.player2 { background: radial-gradient(circle at 35% 35%, var(--player2-stone-color-light), var(--player2-stone-color-dark) 60%, #e0e0e0 90%); }
+        .player-setup-area .color-option .checkmark { position: absolute; top: 10px; right: 10px; color: var(--stone-dark); font-size: 1.8em; opacity: 0; transform: scale(0.5); transition: all 0.3s ease; text-shadow: 1px 1px 2px rgba(255,255,255,0.5); }
+        .player-setup-area .color-option.selected .checkmark { opacity: 1; transform: scale(1); }
+        .start-game-btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 1rem;
+            padding: 1rem 2.5rem; border-radius: 35px; background: linear-gradient(145deg, #FFD700, #FFA500);
+            color: #4a2b1f; font-family: 'Cinzel', serif; font-size: clamp(1.5rem, 5vw, 1.8rem);
+            font-weight: bold; cursor: pointer; transition: all 0.3s ease;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.7); text-shadow: 1px 1px 3px rgba(0,0,0,0.4);
+            border: 3px solid #8B4513; letter-spacing: 3px; text-transform: uppercase;
+            margin-top: 1.5rem; position: relative; overflow: hidden; z-index: 1;
+        }
+        .start-game-btn i { font-size: 0.9em; }
+        .start-game-btn:hover {
+            transform: translateY(-8px) scale(1.05);
+            box-shadow: 0 12px 30px rgba(0,0,0,0.9), 0 0 30px rgba(255,215,0,1);
+            background: linear-gradient(145deg, #FFD700, #FFC107, #FFA500);
+            border-color: #A0522D;
+        }
+        .start-game-btn:active {
+            transform: translateY(3px) scale(0.97);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            background: linear-gradient(145deg, #FFA500, #FFD700);
+        }
+
+        /* --- Responsive Game Layout --- */
+        .game-play-area { 
+            display: none; width: 100%; height: 100%; opacity: 0;
+            animation: fadeInUp 0.5s ease forwards; max-width: 1600px; margin: 0 auto;
+        }
+
+        /* Mobile-First Layout (Default) */
+        .game-play-area.active {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            padding: 0.75rem;
+        }
+        
+        .side-column {
+            display: flex;
+            flex-direction: row; /* Side-by-side on mobile */
+            gap: 0.75rem;
+            width: 100%;
+        }
+
+        .player-panel {
+            padding: 5px;
+            flex: 1;
+        }
+        
+        .center-column {
+            flex-grow: 1; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center; /* Center vertically */
+            gap: 0.75rem;
+            min-height: 0; /* Important for flex-grow in a flex column */
+        }
+
+        .game-board-container { 
+            flex-shrink: 0; position: relative; 
+            width: 95%; 
+            height: auto;
+            aspect-ratio: 1 / 1; 
+            max-width: 500px; /* Cap size on mobile */
+            margin: 0 auto;
+            padding: 10px; background: linear-gradient(160deg, var(--wood-dark) 0%, var(--wood-medium) 100%); 
+            border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.7), inset 0 0 20px rgba(0,0,0,0.4);
+            border: 8px solid var(--wood-light); display: flex; align-items: center; justify-content: center;
+            transform: none; 
+            transition: all var(--transition-duration) ease;
+        }
+
+        .game-board { 
+            background: var(--board-surface-light); border: 4px solid var(--stone-dark); 
+            border-radius: 10px; box-shadow: inset 0 0 15px rgba(0,0,0,0.4); 
+            width: 100%; height: 100%; display: grid; 
+            grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(5, 1fr); 
+            gap: 0; position: relative; overflow: hidden; z-index: 2; 
+        }
+
+        .player-info { 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 0.75rem; 
+            border-radius: 15px; background: rgba(0,0,0,0.45); 
+            box-shadow: inset 0 0 8px rgba(0,0,0,0.5), 0 5px 10px rgba(0,0,0,0.3); 
+            border: 1.5px solid; width: 100%; height: 100%;
+            transition: all 0.3s ease-in-out; backdrop-filter: blur(2px); 
+        }
+        
+        .player-title { 
+            font-size: clamp(1rem, 3.5vw, 1.25rem);
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+        
+        .player-stats { 
+            display: flex; justify-content: space-around; align-items: center; 
+            width: 100%; gap: 1rem; margin-top: 0.25rem; 
+        }
+        .player-stat { 
+            display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+        }
+        .player-stat i {
+            font-size: clamp(1rem, 3vw, 1.2rem);
+            color: var(--text-gold);
+            opacity: 0.8;
+        }
+        .stat-value {
+             font-size: clamp(1.2rem, 4vw, 1.5rem); font-weight: bold;
+        }
+
+        .controls {
+            display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-top: auto; width: 100%;
+        }
+
+        .game-info-display {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 1rem;
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+            color: var(--text-gold);
+            opacity: 0.9;
+            font-size: clamp(0.8rem, 2.5vw, 0.9rem);
+            padding: 0.5rem 0.75rem;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            margin-bottom: 5px;
+        }
+        .game-info-display span:empty { display: none; }
+        .game-info-display strong { color: var(--text-light); margin-right: 5px; }
+        
+        /* Tablet Layout */
+        @media (min-width: 768px) {
+             .game-play-area.active {
+                gap: 1.25rem;
+                padding: 1.25rem;
+            }
+            .center-column {
+                 justify-content: center;
+                 gap: 1.25rem;
+            }
+             .game-board-container {
+                width: 85%;
+                max-width: 550px;
+             }
+        }
+
+
+        /* Desktop Layout */
+        @media (min-width: 1024px) {
+            .game-play-area.active {
+                display: grid;
+                grid-template-columns: minmax(250px, 300px) 1fr; /* 2 columns */
+                align-items: center;
+                gap: 2rem;
+                padding: 1.5rem;
+            }
+
+            .side-column {
+                display: flex;
+                flex-direction: column; /* Stack panels vertically */
+                gap: 1.5rem;
+                height: 100%;
+                justify-content: center;
+                order: -1; /* Move side column to the left */
+            }
+
+            .player-panel {
+                height: auto;
+                flex-grow: 1; 
+                justify-content: center;
+                max-height: 250px;
+            }
+            
+            .center-column {
+                justify-content: center;
+            }
+            
+            .game-board-container {
+                width: clamp(400px, 75vmin, 650px);
+                height: clamp(400px, 75vmin, 650px);
+                transform: perspective(1800px) rotateX(10deg) scale(1); /* Slightly reduced 3D effect */
+                border-width: 10px;
+                padding: 15px;
+            }
+            .controls {
+                flex-wrap: nowrap;
+            }
+        }
+        
+        .cell { 
+            width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; 
+            position: relative; cursor: pointer; aspect-ratio: 1 / 1; z-index: 2; 
+            background: transparent; transition: all 0.2s ease-out; border: 1px solid var(--cell-border);
+            box-shadow: inset 1px 1px 5px rgba(255,255,255,0.5), inset -1px -1px 5px rgba(0,0,0,0.4); 
+        }
+        
+        .status { 
+            padding: 0.75rem; font-size: clamp(1rem, 3vw, 1.2rem); min-height: 50px; text-align: center; 
+            background: rgba(0,0,0,0.5); border-radius: 12px; border: min(0.4vw, 2px) solid rgba(240, 200, 80, 0.6); 
+            box-shadow: inset 0 0 min(3vw, 15px) rgba(0,0,0,0.5), 0 5px 15px rgba(0,0,0,0.4); 
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.7); width: 100%; max-width: 500px;
+            transition: all var(--transition-duration) ease; backdrop-filter: blur(2px); 
+            display: flex; align-items: center; justify-content: center;
+        }
+        
+        .player-info.player1-info { border-color: #333; }
+        .player-info.player2-info { border-color: #ccc; }
+        .player-info.active-player { 
+            box-shadow: 0 0 20px var(--text-gold), inset 0 0 15px rgba(240, 200, 80, 0.7); 
+            border-color: var(--text-gold) !important; transform: scale(1.05); 
+            background: rgba(240, 200, 80, 0.1); 
+        }
+        .player-title { 
+            font-family: 'Cinzel', serif; 
+            margin-bottom: 0.5rem; color: var(--text-gold); text-shadow: 1px 1px 2px rgba(0,0,0,0.5); 
+            min-height: 20px; text-align: center;
+        }
+
+        .controls button { 
+            padding: 0.7rem 1.2rem; border: none; border-radius: 35px; 
+            background: linear-gradient(145deg, var(--wood-light), var(--wood-medium)); 
+            color: var(--text-light); font-weight: bold; cursor: pointer; 
+            font-size: clamp(0.85rem, 2.5vw, 1rem); transition: all 0.3s ease; 
+            box-shadow: 0 6px 10px rgba(0,0,0,0.5); width: auto; max-width: 200px;
+            border: 1px solid var(--wood-dark); text-shadow: 1px 1px 2px rgba(0,0,0,0.7); 
+            letter-spacing: 1px; text-transform: uppercase;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            flex-grow: 1; flex-basis: 120px;
+        }
+        
+        .controls button:hover { 
+            transform: translateY(-5px); box-shadow: 0 9px 18px rgba(0,0,0,0.6); 
+            background: linear-gradient(145deg, var(--wood-light), var(--wood-medium), var(--text-gold)); 
+        }
+        .controls button:active { transform: translateY(2px); box-shadow: 0 3px 7px rgba(0,0,0,0.4); }
+        .controls button.surrender-btn {
+            background: linear-gradient(145deg, #8B0000, #B22222);
+            border-color: #6e0000;
+        }
+        .controls button.surrender-btn:hover {
+            background: linear-gradient(145deg, #B22222, #DC143C);
+        }
+
+        /* --- Confirmation Modal --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); display: none; justify-content: center;
+            align-items: center; z-index: 1010; backdrop-filter: blur(5px); padding: 1.25rem;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-content {
+            background: linear-gradient(160deg, #3a2d25, #2a201a);
+            border: 2px solid var(--text-gold); border-radius: 15px;
+            padding: 2rem; max-width: 500px; width: 100%;
+            position: relative; box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+            text-align: center;
+        }
+        .modal-content h3 { font-family: 'Cinzel', serif; color: var(--text-gold); margin-bottom: 1.25rem; font-size: 1.5rem; }
+        .modal-content p { margin-bottom: 1.5rem; line-height: 1.6; font-size: 1rem; }
+        .modal-actions { display: flex; justify-content: center; gap: 1.25rem; }
+        .modal-actions button {
+            padding: 0.75rem 2rem; border-radius: 25px; font-family: 'Noto Serif', serif;
+            cursor: pointer; transition: all 0.3s ease; font-size: 1rem;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4); border: none;
+        }
+        .modal-confirm-btn { background: var(--danger-red); color: var(--text-light); }
+        .modal-confirm-btn:hover { background: #ff6666; transform: translateY(-3px); }
+        .modal-cancel-btn { background: var(--stone-medium); color: var(--text-light); }
+        .modal-cancel-btn:hover { background: var(--stone-light); color: var(--stone-dark); transform: translateY(-3px); }
+
+        /* --- Rules Modal "Book" --- */
+        .rules-modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none; justify-content: center; align-items: center;
+            z-index: 1015; backdrop-filter: blur(5px);
+            padding: 1rem;
+        }
+        .rules-modal-overlay.active { display: flex; }
+        .rules-book {
+            background: var(--parchment-bg); color: var(--wood-dark);
+            border: 15px solid var(--wood-dark);
+            border-radius: 10px;
+            padding: clamp(1rem, 4vw, 2rem) clamp(1rem, 5vw, 2.5rem);
+            max-width: 800px; width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5), 0 10px 40px rgba(0,0,0,0.7);
+            opacity: 0; transform: scale(0.8);
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .rules-modal-overlay.active .rules-book {
+            opacity: 1; transform: scale(1);
+        }
+        .rules-book h3 {
+            font-family: 'Cinzel', serif;
+            color: var(--wood-dark);
+            text-align: center;
+            font-size: clamp(1.5rem, 4vw, 2rem);
+            margin-bottom: 1.25rem;
+            border-bottom: 2px solid rgba(90, 52, 31, 0.3);
+            padding-bottom: 0.75rem;
+        }
+        .rules-book h4 {
+            font-family: 'Cinzel', serif;
+            color: var(--wood-medium);
+            margin-top: 1.25rem;
+            margin-bottom: 0.75rem;
+            font-size: clamp(1.1rem, 3vw, 1.3rem);
+            border-bottom: 1px solid rgba(90, 52, 31, 0.2);
+            padding-bottom: 5px;
+        }
+        .rules-book p, .rules-book li {
+            line-height: 1.7; /* Increased for readability */
+            margin-bottom: 0.8rem;
+            font-size: clamp(0.95rem, 2.5vw, 1rem);
+        }
+        .rules-book ul { list-style-type: none; padding-left: 0; }
+        .rules-book li { position: relative; padding-left: 1.5rem; }
+        .rules-book li::before {
+            content: '•';
+            position: absolute; left: 5px;
+            color: var(--wood-medium);
+            font-weight: bold;
+        }
+        .rules-book strong { color: var(--danger-red); font-weight: bold; }
+        .rules-book .rules-section p:first-of-type {
+            margin-top: 5px;
+        }
+        .rules-close-btn {
+            position: absolute; top: 10px; right: 15px;
+            background: none; border: none;
+            font-size: 2rem; color: var(--wood-dark);
+            cursor: pointer; transition: transform 0.3s ease, color 0.3s ease;
+        }
+        .rules-close-btn:hover { transform: scale(1.2); color: var(--danger-red); }
+        .rules-content { display: none; }
+
+        .dark-cell { background: rgba(0,0,0,0.1); }
+        .cell:hover { background: rgba(255,255,255,0.2); transform: scale(1.03); z-index: 3; box-shadow: inset 0 0 15px rgba(255,255,255,0.6), inset 0 0 15px rgba(0,0,0,0.5), 0 0 10px rgba(240, 200, 80, 0.3); }
+        .stone { width: 65%; height: 65%; position: relative; z-index: 2; transition: all 0.3s ease; border-radius: 50%; box-shadow: 0 5px 12px rgba(0,0,0,0.5), inset 0 -5px 12px rgba(0,0,0,0.4), inset 0 5px 10px rgba(255,255,255,0.3); }
+        .cell.selected { z-index: 4; animation: pulse 1.5s infinite; }
+        .cell.possible-move { background: rgba(255, 215, 0, 0.2); outline: min(0.4vw, 2px) dashed var(--text-gold); box-shadow: inset 0 0 12px rgba(255, 215, 0, 0.4); }
+        .cell.possible-move:hover { background: rgba(255, 215, 0, 0.4); }
+        @keyframes pulse { 0% { box-shadow: inset 2px 2px 10px rgba(255,255,255,0.5), inset -2px -2px 10px rgba(0,0,0,0.4), 0 0 0 0 rgba(255, 215, 0, 0.5); } 70% { box-shadow: inset 2px 2px 10px rgba(255,255,255,0.5), inset -2px -2px 10px rgba(0,0,0,0.4), 0 0 0 min(3vw, 15px) rgba(255, 215, 0, 0); } 100% { box-shadow: inset 2px 2px 10px rgba(255,255,255,0.5), inset -2px -2px 10px rgba(0,0,0,0.4), 0 0 0 0 rgba(255, 215, 0, 0); } }
+        .cell.capturable { background: rgba(255, 0, 0, 0.25); outline: min(0.6vw, 3px) dashed var(--danger-red); animation: capturable-pulse 2s infinite; }
+        @keyframes capturable-pulse { 0% { outline-color: var(--danger-red); } 50% { outline-color: rgba(255, 0, 0, 0.5); } 100% { outline-color: var(--danger-red); } }
+        .cell.mill-highlight { background: rgba(0, 255, 255, 0.2); outline: min(0.6vw, 3px) solid var(--highlight-cyan); animation: mill-pulse 1.5s infinite; }
+        @keyframes mill-pulse { 0% { outline-color: var(--highlight-cyan); } 50% { outline-color: rgba(0, 255, 255, 0.5); } 100% { outline-color: var(--highlight-cyan); } }
+        .stone::after { content: ""; position: absolute; top: 15%; left: 15%; width: 30%; height: 20%; background: rgba(255,255,255,0.5); border-radius: 50%; transform: rotate(-20deg); z-index: 3; filter: blur(2px); }
+        .stone.player1 { background: radial-gradient(circle at 35% 35%, var(--player1-stone-color-light), var(--player1-stone-color-dark) 60%, #000 90%); }
+        .stone.player2 { background: radial-gradient(circle at 35% 35%, var(--player2-stone-color-light), var(--player2-stone-color-dark) 60%, #e0e0e0 90%); }
+        .stone.selected { transform: scale(1.25); animation: stone-pulse 1.5s infinite; filter: brightness(1.1); }
+        @keyframes stone-pulse { 0% { box-shadow: 0 0 0 0 rgba(240, 200, 80, 0.7), 0 min(2.8vw, 14px) min(7vw, 35px) rgba(0,0,0,0.8), inset 0 min(-1.8vw, -9px) min(4.5vw, 22px) rgba(0,0,0,0.4); } 70% { box-shadow: 0 0 0 min(3.5vw, 18px) rgba(240, 200, 80, 0), 0 min(2.8vw, 14px) min(7vw, 35px) rgba(0,0,0,0.8), inset 0 min(-1.8vw, -9px) min(4.5vw, 22px) rgba(0,0,0,0.4); } 100% { box-shadow: 0 0 0 0 rgba(240, 200, 80, 0), 0 min(2.8vw, 14px) min(7vw, 35px) rgba(0,0,0,0.8), inset 0 min(-1.8vw, -9px) min(4.5vw, 22px) rgba(0,0,0,0.4); } }
+        .stone.moving { animation: placeStone 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards; }
+        @keyframes placeStone { 0% { opacity: 0; transform: scale(0.2) translateY(-50px); } 70% { opacity: 1; transform: scale(1.1) translateY(5px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
+        .stone.captured, .stone.fade-out { animation: fadeOutStone 0.5s ease-in forwards; }
+        @keyframes fadeOutStone { to { transform: scale(0.3) rotate(30deg); opacity: 0; filter: blur(5px); } }
+        .status.status-error { background-color: rgba(255, 0, 0, 0.6); border-color: var(--danger-red); animation: shake 0.5s ease-in-out; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-5px); } }
+        footer { text-align: center; padding: 0.75rem 0; color: var(--text-gold); font-size: clamp(0.8rem, 2vw, 0.9rem); opacity: 0.9; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 5px; text-shadow: 1px 1px 2px rgba(0,0,0,0.4); flex-shrink: 0; }
+        
+        .winner-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.9); display: flex; justify-content: center; align-items: center; z-index: 1001; color: var(--text-gold); font-family: 'Cinzel', serif; font-size: clamp(2em, 10vw, 5em); flex-direction: column; gap: 30px; opacity: 0; pointer-events: none; transition: opacity 0.5s ease; backdrop-filter: blur(8px); text-shadow: 0 0 15px rgba(240, 200, 80, 0.8), 0 0 30px rgba(240, 200, 80, 0.6); }
+        .winner-overlay.active { opacity: 1; pointer-events: all; animation: winnerFadeIn 1s ease-out forwards; }
+        .winner-overlay .winner-message { font-size: 0.5em; color: var(--text-light); text-shadow: none; margin-bottom: -15px; opacity: 0; animation: slideInUp 0.8s ease-out 0.5s forwards; }
+        .winner-overlay .winner-name { font-size: 1em; font-weight: bold; opacity: 0; animation: zoomIn 0.8s cubic-bezier(0.68, -0.55, 0.27, 1.55) 0.8s forwards; }
+        .winner-overlay .replay-button { padding: 1rem 2.5rem; border-radius: 35px; background: linear-gradient(145deg, var(--wood-light), var(--wood-medium)); color: var(--text-light); font-family: 'Cinzel', serif; font-size: clamp(1rem, 4vw, 1.2rem); font-weight: bold; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 5px 15px rgba(0,0,0,0.5); text-shadow: 1px 1px 2px rgba(0,0,0,0.6); border: none; opacity: 0; animation: fadeIn 0.8s ease-out 1.5s forwards; }
+        .winner-overlay .replay-button:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.6); background: linear-gradient(145deg, var(--wood-light), var(--wood-medium), var(--text-gold)); }
+        @keyframes winnerFadeIn { to { opacity: 1; } } @keyframes slideInUp { from { transform: translateY(50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } } @keyframes zoomIn { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .ephemeral-message-bubble { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(255, 255, 255, 0.9); color: var(--stone-dark); padding: 1.25rem 2rem; border-radius: 15px; box-shadow: 0 8px 20px rgba(0,0,0,0.4); font-size: 1.8em; font-weight: bold; text-align: center; white-space: nowrap; z-index: 999; opacity: 0; pointer-events: none; transition: opacity 0.3s ease, transform 0.3s ease; border: 3px solid var(--text-gold); display: flex; align-items: center; gap: 15px; }
+        .ephemeral-message-bubble.active { opacity: 1; transform: translate(-50%, -80px); animation: bubblePop 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards; }
+        @keyframes bubblePop { 0% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; } 80% { transform: translate(-50%, -90px) scale(1.05); opacity: 1; } 100% { transform: translate(-50%, -80px) scale(1); opacity: 1; } }
+
+    </style>
+</head>
+<body>
+    <div class="language-selector">
+        <i class="fas fa-globe"></i>
+        <select id="language-select">
+            <option value="fr">Français</option>
+            <option value="kab">Taqbaylit</option>
+        </select>
+    </div>
+
+    <div class="stone-decoration stone-1">ⵣ</div>
+    <div class="stone-decoration stone-2">ⵣ</div>
+    <div class="stone-decoration stone-3">ⵣ</div>
+    <div class="stone-decoration stone-4">ⵣ</div>
+
+    <header id="main-header">
+        <h1 data-i18n="appTitle">TIDDAS</h1>
+    </header>
+
+    <div class="game-container">
+        <div id="version-selection-area" class="selection-area active">
+            <h2 data-i18n="chooseVersion">Choisir la version du jeu :</h2>
+            <div class="version-grid">
+                <div class="version-card" data-variant="tiddezt-no-diag">
+                    <h3 data-i18n="tiddeztTitle">TIDDEZT</h3>
+                    <p data-i18n="tiddeztDesc">Pas de capture pendant le placement. Interdiction d'aligner 3 pions pendant le placement. Déplacements et captures uniquement horizontaux/verticaux. Victoire normale.</p>
+                </div>
+                <div class="version-card" data-variant="bessif-tiddezt">
+                    <h3 data-i18n="bessifTitle">Učči bessif TIDDEZT</h3>
+                    <p data-i18n="bessifDesc">Mêmes règles que TIDDEZT. Victoire inversée: gagnez en perdant tous vos pions. Quand vous formez un moulin, votre adversaire choisit un de ses pions à capturer.</p>
+                </div>
+            </div>
+            <button id="show-rules-btn" class="rules-btn">
+                <i class="fas fa-book-open"></i>
+                <span data-i18n="gameRulesTitle">Règles du jeu</span>
+            </button>
+        </div>
+
+        <div id="mode-selection-area" class="selection-area">
+             <h2 data-i18n="howToPlay">Comment souhaitez-vous jouer ?</h2>
+            <div class="options-group">
+                <button id="play-online-btn" class="option-btn" disabled>
+                    <i class="fas fa-globe"></i>
+                    <span data-i18n="playOnline">Jouer en ligne</span>
+                    <span data-i18n="playOnlineDesc">Bientôt disponible</span>
+                </button>
+                <button id="play-ai-btn" class="option-btn">
+                    <i class="fas fa-robot"></i>
+                    <span data-i18n="playAI">Jouer contre l'ordinateur</span>
+                    <span data-i18n="playAIDesc">Affrontez une intelligence artificielle</span>
+                </button>
+                <button id="play-offline-btn" class="option-btn">
+                    <i class="fas fa-users"></i>
+                    <span data-i18n="playOffline">Jouer hors-ligne</span>
+                    <span data-i18n="playOfflineDesc">Partie locale sur votre appareil</span>
+                </button>
+            </div>
+            <button id="back-to-versions-btn" class="back-btn" data-i18n="backToVersions">Retour aux versions</button>
+        </div>
+        
+        <div id="ai-difficulty-selection-area" class="selection-area">
+            <h2 data-i18n="chooseAIDifficulty">Choisir la difficulté de l'ordinateur</h2>
+            <div class="options-group">
+                <button class="option-btn difficulty-btn" data-level="1">
+                    <i class="far fa-smile"></i>
+                    <span data-i18n="difficultyEasy">Facile</span>
+                    <span data-i18n="difficultyEasyDesc">L'ordinateur joue au hasard</span>
+                </button>
+                <button class="option-btn difficulty-btn" data-level="2">
+                    <i class="far fa-meh"></i>
+                    <span data-i18n="difficultyMedium">Moyen</span>
+                    <span data-i18n="difficultyMediumDesc">L'ordinateur est un adversaire correct</span>
+                </button>
+                <button class="option-btn difficulty-btn" data-level="3">
+                    <i class="far fa-grimace"></i>
+                    <span data-i18n="difficultyHard">Difficile</span>
+                    <span data-i18n="difficultyHardDesc">L'ordinateur est un vrai stratège</span>
+                </button>
+            </div>
+            <button id="back-to-modes-btn" class="back-btn" data-i18n="backToModes">Retour aux modes</button>
+        </div>
+
+        <div id="player-setup-area" class="selection-area player-setup-area">
+            <h2 data-i18n="playerSetup">Configuration des joueurs</h2>
+            <div class="setup-section" id="player-naming-section">
+                <h3 data-i18n="playerNamesTitle">Noms des joueurs</h3>
+                <div class="input-group">
+                    <label for="player1-name-input" id="player1-name-label" data-i18n="player1NameLabel">Nom du Joueur 1 (Noir) :</label>
+                    <input type="text" id="player1-name-input" data-i18n-placeholder="yourNamePlaceholder" placeholder="Votre Nom">
+                </div>
+                <div class="input-group" id="player2-name-group">
+                    <label for="player2-name-input" data-i18n="player2NameLabel">Nom du Joueur 2 (Blanc) :</label>
+                    <input type="text" id="player2-name-input" data-i18n-placeholder="player2Placeholder" placeholder="Joueur 2">
+                </div>
+            </div>
+            <div class="setup-section" id="color-choice-section">
+                <h3 data-i18n="chooseYourColorTitle">Choisir votre couleur</h3>
+                <div class="color-choice-group">
+                    <label class="color-option" data-player="1">
+                        <input type="radio" name="human-color" value="1" checked>
+                        <div class="stone-preview player1"></div>
+                        <span id="color-option-1-text" data-i18n="player1Color">Noir (Joueur 1)</span>
+                        <div class="checkmark"><i class="fas fa-check-circle"></i></div>
+                    </label>
+                    <label class="color-option" data-player="2">
+                        <input type="radio" name="human-color" value="2">
+                        <div class="stone-preview player2"></div>
+                        <span id="color-option-2-text" data-i18n="player2Color">Blanc (Joueur 2)</span>
+                        <div class="checkmark"><i class="fas fa-check-circle"></i></div>
+                    </label>
+                </div>
+            </div>
+            <button id="start-game-from-setup" class="start-game-btn">
+                <i class="fas fa-play"></i>
+                <span data-i18n="playButton">Jouer</span>
+            </button>
+            <button id="back-to-modes-from-setup-btn" class="back-btn" data-i18n="backToModes">Retour aux modes</button>
+        </div>
+
+        <div id="game-play-area" class="game-play-area">
+            <div class="side-column">
+                <div class="player-panel player-panel-1">
+                    <div class="player-info player1-info">
+                        <div class="player-title" id="p1-display-name"></div>
+                        <div class="player-stats">
+                            <div class="player-stat" title="Cailloux restants">
+                                <i class="fas fa-compact-disc"></i>
+                                <span class="stat-value" id="p1-count">10</span>
+                            </div>
+                            <div class="player-stat" title="Cailloux mangés">
+                                <i class="fas fa-ghost"></i>
+                                <span class="stat-value" id="p1-capt">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="player-panel player-panel-2">
+                    <div class="player-info player2-info">
+                        <div class="player-title" id="p2-display-name"></div>
+                        <div class="player-stats">
+                            <div class="player-stat" title="Cailloux restants">
+                                <i class="fas fa-compact-disc"></i>
+                                <span class="stat-value" id="p2-count">10</span>
+                            </div>
+                            <div class="player-stat" title="Cailloux mangés">
+                                <i class="fas fa-ghost"></i>
+                                <span class="stat-value" id="p2-capt">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="center-column">
+                <div class="game-info-display">
+                    <span id="game-variant-info"></span>
+                    <span id="game-difficulty-info"></span>
+                </div>
+                <div class="status" id="status" role="alert" aria-live="polite"></div>
+                <div class="game-board-container">
+                    <div class="game-board" id="board"></div>
+                    <div id="ephemeral-message-bubble" class="ephemeral-message-bubble"></div>
+                </div>
+                <div class="controls">
+                    <button id="new-game"><i class="fas fa-home"></i> <span data-i18n="newGame">Nouvelle Partie</span></button>
+                    <button id="restart"><i class="fas fa-redo"></i> <span data-i18n="restartGame">Recommencer</span></button>
+                    <button id="surrender" class="surrender-btn"><i class="fas fa-flag"></i> <span data-i18n="surrender">Abandonner</span></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <div data-i18n="footerHeritage">Patrimoine Culturel Amazigh • Jeu Traditionnel Kabyle</div>
+        <div class="creator"><span data-i18n="footerCreator">Créé par</span> Boussad TAMAZIRT</div>
+    </footer>
+
+    <div id="winner-overlay" class="winner-overlay">
+        <div class="winner-message" data-i18n="congratulations">Félicitations !</div>
+        <div class="winner-name"></div>
+        <button class="replay-button" id="winner-replay-button" data-i18n="replay">Rejouer</button>
+    </div>
+
+    <div id="confirmation-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 id="modal-title"></h3>
+            <p id="modal-message"></p>
+            <div class="modal-actions">
+                <button id="modal-cancel-btn" class="modal-cancel-btn"></button>
+                <button id="modal-confirm-btn" class="modal-confirm-btn"></button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="rules-modal" class="rules-modal-overlay">
+        <div class="rules-book">
+            <button id="rules-close-btn" class="rules-close-btn" title="Fermer">&times;</button>
+            
+            <div class="rules-content" lang="fr">
+                <h3 data-i18n="gameRulesTitle">Règles du Jeu</h3>
+                <h4 data-i18n="rulesGeneral">Règles Générales de Tiddas (Communes à toutes les variantes) :</h4>
+                <div class="rules-section">
+                    <p><strong data-i18n="rulesObjectiveStrong">Objectif :</strong> <span data-i18n="rulesObjective">Le but principal est de réduire le nombre de pions de votre adversaire à moins de trois, ou de le bloquer de manière à ce qu'il ne puisse plus effectuer de mouvements valides. Pour la variante Učči bessif TIDDEZT, l'objectif est inversé : le joueur gagne s'il réduit son propre nombre de pions à moins de trois, ou s'il est bloqué et ne peut plus effectuer de mouvements valides.</span></p>
+                    <p><strong data-i18n="rulesPiecesStrong">Pions :</strong> <span data-i18n="rulesPieces">Chaque joueur dispose de 10 pions (appelés "cailloux"). Le Joueur 1 (Noir) commence toujours.</span></p>
+                    <p><strong data-i18n="rulesPhasesStrong">Phases de Jeu :</strong></p>
+                    <ul>
+                        <li><strong data-i18n="rulesPlacementPhaseStrong">Phase de Placement :</strong> <span data-i18n="rulesPlacementPhase">Les joueurs placent à tour de rôle un de leurs pions sur n'importe quelle case vide du plateau. Cette phase continue jusqu'à ce que les 20 pions (10 pour chaque joueur) soient placés.</span></li>
+                        <li><strong data-i18n="rulesMovePhaseStrong">Phase de Déplacement :</strong> <span data-i18n="rulesMovePhase">Une fois tous les pions placés, les joueurs déplacent à tour de rôle l'un de leurs pions d'une case à la fois vers une case adjacente (horizontalement ou verticalement) qui est vide.</span></li>
+                    </ul>
+                    <p><strong data-i18n="rulesMillStrong">Moulin (Alignement) :</strong> <span data-i18n="rulesMill">Former un alignement de <strong>strictement 3 pions</strong> de sa couleur (horizontalement ou verticalement). <strong>Les alignements en diagonale ne sont pas considérés comme des moulins valides.</strong></span></p>
+                    <p><strong data-i18n="rulesCaptureStrong">Capture :</strong> <span data-i18n="rulesCapture">Lorsqu'un joueur forme un moulin (horizontal ou vertical de 3 pions), il a le droit de "manger" (capturer) un pion adverse.</span></p>
+                    <p><strong data-i18n="rulesCapturePlacementRestrictionStrong">Alignement de 3 interdit pendant le placement :</strong> <span data-i18n="rulesCapturePlacementRestriction">Il est interdit de placer un pion de manière à former un moulin de 3 pions ou plus. Par conséquent, <strong>aucune capture n'est possible pendant la phase de placement</strong>. Les captures sont uniquement possibles en phase de déplacement.</span></p>
+                    <p><strong data-i18n="rulesCaptureAllPiecesStrong">Tous les pions sont capturables :</strong> <span data-i18n="rulesCaptureAllPieces">Dans toutes les variantes de ce jeu, <strong>tous les pions peuvent être capturés</strong>, même s'ils font partie d'un moulin. Il n'y a pas de pions "protégés".</span></p>
+                    <p><strong data-i18n="rulesForcedMoveStrong">Règle de déplacement forcé de moulin :</strong> <span data-i18n="rulesForcedMove">En phase de déplacement, si un joueur a la possibilité de former un moulin avec un de ses pions, il est <strong>obligé</strong> de le faire. Si plusieurs mouvements permettent de former un moulin, le joueur peut choisir l'un d'entre eux.</span></p>
+                </div>
+                <h4 data-i18n="rulesDifferences">Différences entre les variantes :</h4>
+                <div class="rules-section">
+                    <p data-i18n="rulesDifferencesIntro">Les règles de base s'appliquent, mais chaque variante introduit des spécificités importantes :</p>
+                    <p><strong data-i18n="rulesTiddezt">TIDDEZT :</strong></p>
+                    <ul>
+                        <li><strong data-i18n="rulesTiddeztMovesStrong">Déplacements :</strong> <span data-i18n="rulesTiddeztMoves">Uniquement horizontaux/verticaux. Les déplacements en diagonale sont interdits.</span></li>
+                        <li><strong data-i18n="rulesTiddeztCapturesStrong">Captures :</strong> <span data-i18n="rulesTiddeztCaptures">Le joueur qui forme le moulin choisit quel pion adverse capturer.</span></li>
+                        <li><strong data-i18n="rulesTiddeztWinStrong">Victoire :</strong> <span data-i18n="rulesTiddeztWin">Normale.</span></li>
+                        <li><strong data-i18n="rulesTiddeztNoForcedMoveStrong">Pas de déplacement forcé de moulin :</strong> <span data-i18n="rulesTiddeztNoForcedMove">La règle du déplacement forcé de moulin ne s'applique pas.</span></li>
+                    </ul>
+                    <p><strong data-i18n="rulesBessif">Učči Bessif :</strong></p>
+                    <ul>
+                        <li><span data-i18n="rulesBessifCombines">Combine les règles de <strong>TIDDEZT</strong> avec le principe de <strong>victoire inversée</strong>.</span></li>
+                        <li><strong data-i18n="rulesBessifMovesStrong">Déplacements :</strong> <span data-i18n="rulesBessifMoves">Uniquement horizontaux/verticaux.</span></li>
+                        <li><strong data-i18n="rulesBessifInverseWinStrong">Victoire Inversée :</strong> <span data-i18n="rulesBessifInverseWin">Le joueur gagne si son propre nombre de pions est réduit à moins de trois (c'est-à-dire 0, 1 ou 2 pions), OU si son adversaire est bloqué et qu'il (le joueur qui vient de jouer) a moins de pions sur le plateau que son adversaire.</span></li>
+                        <li><strong data-i18n="rulesBessifOpponentChoosesStrong">Choix du pion à capturer :</strong> <span data-i18n="rulesBessifOpponentChooses">Lorsque vous formez un moulin, c'est votre <strong>adversaire</strong> qui doit choisir l'un de ses propres pions que vous allez capturer.</span></li>
+                        <li><strong data-i18n="rulesBessifForcedMoveStrong">Déplacement forcé pour former un moulin :</strong> <span data-i18n="rulesBessifForcedMove">La règle du déplacement forcé de moulin s'applique.</span></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="rules-content" lang="kab">
+                <h3 data-i18n="gameRulesTitle">Ilugan n wurar</h3>
+                <h4 data-i18n="rulesGeneral">Ilugan s amata n Tiddas :</h4>
+                <div class="rules-section">
+                    <p><strong data-i18n="rulesObjectiveStrong">Iswi :</strong> <span data-i18n="rulesObjective">Iswi amenzu, yal ma yetellet yiwen ileqqafen-is ad yemmečč yiwen uleqqaf n wexṣim, neɣ aḥbas-is iwakken ur izmer ara ad inaqel. Di tewsit n Učči bessif, yerebḥ win i wummi mmeččen ileqqafen-is.</span></p>
+                    <p><strong data-i18n="rulesPiecesStrong">Ileqqafen :</strong> <span data-i18n="rulesPieces">Yal amyurar yesɛa 10 n yileqqafen. Amyurar 1 (Aberkan) yettbdu d amezwaru.</span></p>
+                    <p><strong data-i18n="rulesPhasesStrong">Talliyin n wurar :</strong></p>
+                    <ul>
+                        <li><strong data-i18n="rulesPlacementPhaseStrong">Tallit n userrasu :</strong> <span data-i18n="rulesPlacementPhase">Imyuraren srusuyen s nnuba (yiwen/yiwen uleqqaf). Tallit-a tekfa mi rsen i 20 n yileqqafen.</span></li>
+                        <li><strong data-i18n="rulesMovePhaseStrong">Tallit n unaqel :</strong> <span data-i18n="rulesMovePhase">Mi rsen yakk ileqqafen, imyuraren ad bdun ad ttnaqalen ileqqafen ɣer texxamin yexlan yellan ɣer yidis yexlan.</span></li>
+                    </ul>
+                    <p><strong data-i18n="rulesMillStrong">Atellet :</strong> <span data-i18n="rulesMill">Aseddukel n <strong>tlata n yileqqafen</strong> kan n yiwen yini (s teɣzi neɣ s tehri).</span></p>
+                    <p><strong data-i18n="rulesCaptureStrong">Učči :</strong> <span data-i18n="rulesCapture">Ma yesdukel amyurar tlata ileqqafen, yezmer ad yečč aleqqaf n wexṣim-is.</span></p>
+                    <p><strong data-i18n="rulesCapturePlacementRestrictionStrong">Yegdel ad tesdukleḍ 3 deg usersu :</strong> <span data-i18n="rulesCapturePlacementRestriction">Yegdel ad tserseḍ aleqqaf iwakken ad tesdukleḍ tlata. Daymi, ulac Učči deg tallit n usersu. Učči tettili kan deg tallit n unaqel.</span></p>
+                    <p><strong data-i18n="rulesCaptureAllPiecesStrong">Akk ileqqafen zemren ad mmeččen :</strong> <span data-i18n="rulesCaptureAllPieces">Deg yakk tiwsiyin, <strong>akk ileqqafen zemren ad mmeččen</strong>, ula ma llan deg utellet.</span></p>
+                    <p><strong data-i18n="rulesForcedMoveStrong">atellet s tmara:</strong> <span data-i18n="rulesForcedMove">Deg tallit n unaqel, ma yella umyurar yezmer ad itellet, ilaq-as ad t-yexdem. Ma yella aṭas n yiberdan, ad yefren yiwen.</span></p>
+                </div>
+                <h4 data-i18n="rulesDifferences">Imgired gar tewsiyin :</h4>
+                <div class="rules-section">
+                    <p data-i18n="rulesDifferencesIntro">Yal tawsit tesɛa ilugan-is :</p>
+                    <p><strong data-i18n="rulesTiddezt">TIDDEZT :</strong></p>
+                    <ul>
+                        <li><strong data-i18n="rulesTiddeztMovesStrong">Anaqel :</strong> <span data-i18n="rulesTiddeztMoves">Kan s teɣzi neɣ s tehri.</span></li>
+                        <li><strong data-i18n="rulesTiddeztCapturesStrong">Učči :</strong> <span data-i18n="rulesTiddeztCaptures">Win yesduklen tlata ad yefren aleqqaf n wexṣim-is ara yečč.</span></li>
+                        <li><strong data-i18n="rulesTiddeztWinStrong">Arbaḥ :</strong> <span data-i18n="rulesTiddeztWin">yerbeḥ win yeččan.</span></li>
+                        <li><strong data-i18n="rulesTiddeztNoForcedMoveStrong">Ulac atellet s tmara :</strong> <span data-i18n="rulesTiddeztNoForcedMove">Alugen n lmakala bessif ur ttilin ara.</span></li>
+                    </ul>
+                    <p><strong data-i18n="rulesBessif">Učči Bessif :</strong></p>
+                    <ul>
+                        <li><span data-i18n="rulesBessifCombines">Tesdukel ilugan n <strong>TIDDEZT</strong> d umenzay n <strong>A werbaḥ s wexṣar</strong>.</span></li>
+                        <li><strong data-i18n="rulesBessifMovesStrong">Anaqel :</strong> <span data-i18n="rulesBessifMoves">Kan s teɣzi neɣ s tehri.</span></li>
+                        <li><strong data-i18n="rulesBessifInverseWinStrong">Arbaḥ s wexṣar :</strong> <span data-i18n="rulesBessifInverseWin">Amyurar ad irebḥ ma yella gran-as-d ala sin (2) ileqqafen, NEƔ ma yella axṣim-is ur yezmir ara ad inaqel, u netta (win i d-yuraren) yesɛa drus n yileqqafen.</span></li>
+                        <li><strong data-i18n="rulesBessifOpponentChoosesStrong">Axṣim ad yefren :</strong> <span data-i18n="rulesBessifOpponentChooses">Ma yella tetelteḍ, d <strong>axṣim-ik</strong> ara d-ifernen aleqqaf-is ara teččeḍ.</span></li>
+                        <li><strong data-i18n="rulesBessifForcedMoveStrong">atellet s tmara :</strong> <span data-i18n="rulesBessifForcedMove">Ur d ak d iṣaḥ ara ad tenaqleḍ alqqaf ɣer w anda ur tettellit ara ma yella yezmer.</span></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // --- CONSTANTS AND GLOBAL VARIABLES ---
+        const SIZE = 5;
+        const PIECES = 10;
+        
+        let state;
+        let variant = null;
+        let gameMode = null;
+        let aiDifficulty = null;
+        let currentScreen = 'version-selection-area';
+        
+        let player1Name = "Player 1";
+        let player2Name = "Player 2";
+        let humanPlayerId = 1;
+        let aiPlayerId = null;
+        let currentLanguage = 'fr';
+        let onConfirmCallback = null;
+
+        // --- DOM ELEMENTS CACHE ---
+        const boardDiv = document.getElementById("board");
+        const statusDiv = document.getElementById("status");
+        const p1Count = document.getElementById("p1-count");
+        const p2Count = document.getElementById("p2-count");
+        const p1Capt = document.getElementById("p1-capt");
+        const p2Capt = document.getElementById("p2-capt");
+        const p1Info = document.querySelector('.player1-info');
+        const p2Info = document.querySelector('.player2-info');
+        const allScreens = document.querySelectorAll('.selection-area, .game-play-area');
+        const versionCards = document.querySelectorAll('.version-card');
+        const player1NameInput = document.getElementById('player1-name-input');
+        const player2NameInput = document.getElementById('player2-name-input');
+        const p1DisplayName = document.getElementById('p1-display-name');
+        const p2DisplayName = document.getElementById('p2-display-name');
+        const languageSelect = document.getElementById('language-select');
+        const ephemeralMessageBubble = document.getElementById('ephemeral-message-bubble');
+        const winnerOverlay = document.getElementById('winner-overlay');
+        const winnerNameElement = winnerOverlay.querySelector('.winner-name');
+        const winnerReplayButton = document.getElementById('winner-replay-button');
+        const mainHeader = document.getElementById('main-header');
+        const player1NameLabel = document.getElementById('player1-name-label');
+        const player2NameGroup = document.getElementById('player2-name-group');
+        const colorChoiceSection = document.getElementById('color-choice-section');
+        const colorOptions = document.querySelectorAll('.color-option');
+        
+        const confirmationModal = document.getElementById('confirmation-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalMessage = document.getElementById('modal-message');
+        const modalConfirmBtn = document.getElementById('modal-confirm-btn');
+        const modalCancelBtn = document.getElementById('modal-cancel-btn');
+        const surrenderBtn = document.getElementById('surrender');
+        
+        const rulesModal = document.getElementById('rules-modal');
+        const showRulesBtn = document.getElementById('show-rules-btn');
+        const rulesCloseBtn = document.getElementById('rules-close-btn');
+
+        // --- VARIANT CONFIGURATION ---
+        const variantConfig = {
+            "tiddezt-no-diag": { name: "TIDDEZT", isInverseWin: false, forceMillMove: false },
+            "bessif-tiddezt": { name: "Učči bessif TIDDEZT", isInverseWin: true, forceMillMove: true }
+        };
+        const aiDifficultyNames = { 1: "Easy", 2: "Medium", 3: "Hard" };
+
+        // --- CORRECTED: Translations object ---
+        const translations = {
+            fr: {
+                surrender: "Abandonner",
+                confirm: "Confirmer",
+                cancel: "Annuler",
+                defaultPlayer1: "Joueur 1",
+                defaultPlayer2: "Joueur 2",
+                defaultComputerName: "L'ordinateur",
+                defaultHumanName: "Humain",
+                appTitle: "Tiddas - Jeu ",
+                chooseVersion: "Choisir la version du jeu :",
+                tiddeztTitle: "TIDDEZT",
+                tiddeztDesc: "Pas de capture pendant le placement. Interdiction d'aligner 3 pions pendant le placement. Déplacements et captures uniquement horizontaux/verticaux. Victoire normale.",
+                bessifTitle: "Učči Bessif",
+                bessifDesc: "Mêmes règles que TIDDEZT. Victoire inversée: gagnez en perdant tous vos pions. Quand vous formez un moulin, votre adversaire choisit un de ses pions à capturer.",
+                howToPlay: "Comment souhaitez-vous jouer ?",
+                playOnline: "Jouer en ligne",
+                playOnlineDesc: "Bientôt disponible",
+                playAI: "Jouer contre l'ordinateur",
+                playAIDesc: "Affrontez une intelligence artificielle",
+                playOffline: "Jouer hors-ligne",
+                playOfflineDesc: "Partie locale sur votre appareil",
+                backToVersions: "Retour aux versions",
+                chooseAIDifficulty: "Choisir la difficulté de l'ordinateur",
+                difficultyEasyDesc: "L'ordinateur joue au hasard",
+                difficultyMediumDesc: "L'ordinateur est un adversaire correct",
+                difficultyHardDesc: "L'ordinateur est un vrai stratège",
+                backToModes: "Retour aux modes",
+                playerSetup: "Configuration des joueurs",
+                playerNamesTitle: "Noms des joueurs",
+                chooseYourColorTitle: "Choisir votre couleur",
+                playerHumanName: "Nom du Joueur (Humain) :",
+                player1NameLabel: "Nom du Joueur 1 (Noir) :",
+                player2NameLabel: "Nom du Joueur 2 (Blanc) :",
+                yourNamePlaceholder: "Votre Nom",
+                player2Placeholder: "Joueur 2",
+                yourColor: "Votre couleur",
+                aiColor: "Couleur de l'IA",
+                player1Color: "Noir (Joueur 1)",
+                player2Color: "Blanc (Joueur 2)",
+                playButton: "Jouer",
+                gameVersion: "Version:",
+                aiDifficultyDisplayLabel: "Difficulté IA:",
+                ephemeralMill: "Tlata S Ya !",
+                ephemeralCaptureNormal: "Awi-d Wa !",
+                ephemeralCaptureBessif: "Ddem wa !",
+                ephemeralMovePhase: "Phase de déplacement !",
+                player1DisplayName: "Joueur 1 (Noir)",
+                player2DisplayName: "Joueur 2 (Blanc)",
+                stones: "Cailloux",
+                eaten: "Mangé",
+                newGame: "Nouvelle Partie",
+                restartGame: "Recommencer",
+                gameRulesTitle: "Règles du Jeu",
+                rulesGeneral: "Règles Générales de Tiddas (Communes à toutes les variantes) :",
+                rulesObjectiveStrong: "Objectif :",
+                rulesObjective: "Le but principal est de réduire le nombre de pions de votre adversaire à moins de trois, ou de le bloquer de manière à ce qu'il ne puisse plus effectuer de mouvements valides. Pour la variante Učči bessif TIDDEZT, l'objectif est inversé : le joueur gagne s'il réduit son propre nombre de pions à moins de trois, ou s'il est bloqué et ne peut plus effectuer de mouvements valides.",
+                rulesPiecesStrong: "Pions :",
+                rulesPieces: "Chaque joueur dispose de 10 pions (appelés \"cailloux\"). Le Joueur 1 (Noir) commence toujours.",
+                rulesPhasesStrong: "Phases de Jeu :",
+                rulesPlacementPhaseStrong: "Phase de Placement :",
+                rulesPlacementPhase: "Les joueurs placent à tour de rôle un de leurs pions sur n'importe quelle case vide du plateau. Cette phase continue jusqu'à ce que les 20 pions (10 pour chaque joueur) soient placés.",
+                rulesMovePhaseStrong: "Phase de Déplacement :",
+                rulesMovePhase: "Une fois tous les pions placés, les joueurs déplacent à tour de rôle l'un de leurs pions d'une case à la fois vers une case adjacente (horizontalement ou verticalement) qui est vide.",
+                rulesMillStrong: "Moulin (Alignement) :",
+                rulesMill: "Former un alignement de <strong>strictement 3 pions</strong> de sa couleur (horizontalement ou verticalement). <strong>Les alignements en diagonale ne sont pas considérés comme des moulins valides.</strong>",
+                rulesCaptureStrong: "Capture :",
+                rulesCapture: "Lorsqu'un joueur forme un moulin (horizontal ou vertical de 3 pions), il a le droit de \"manger\" (capturer) un pion adverse.",
+                rulesCapturePlacementRestrictionStrong: "Alignement de 3 interdit pendant le placement :",
+                rulesCapturePlacementRestriction: "Il est interdit de placer un pion de manière à former un moulin de 3 pions ou plus. Par conséquent, <strong>aucune capture n'est possible pendant la phase de placement</strong>. Les captures sont uniquement possibles en phase de déplacement.",
+                rulesCaptureAllPiecesStrong: "Tous les pions sont capturables :",
+                rulesCaptureAllPieces: "Dans toutes les variantes de ce jeu, <strong>tous les pions peuvent être capturés</strong>, même s'ils font partie d'un moulin. Il n'y a pas de pions \"protégés\".",
+                rulesForcedMoveStrong: "Règle de déplacement forcé de moulin :",
+                rulesForcedMove: "En phase de déplacement, si un joueur a la possibilité de former un moulin avec un de ses pions, il est <strong>obligé</strong> de le faire. Si plusieurs mouvements permettent de former un moulin, le joueur peut choisir l'un d'entre eux.",
+                rulesDifferences: "Différences entre les variantes :",
+                rulesDifferencesIntro: "Les règles de base s'appliquent, mais chaque variante introduit des spécificités importantes :",
+                rulesTiddezt: "TIDDEZT :",
+                rulesTiddeztMovesStrong: "Déplacements :",
+                rulesTiddeztMoves: "Uniquement horizontaux/verticaux. Les déplacements en diagonale sont interdits.",
+                rulesTiddeztCapturesStrong: "Captures :",
+                rulesTiddeztCaptures: "Le joueur qui forme le moulin choisit quel pion adverse capturer.",
+                rulesTiddeztWinStrong: "Victoire :",
+                rulesTiddeztWin: "Normale.",
+                rulesTiddeztNoForcedMoveStrong: "Pas de déplacement forcé de moulin :",
+                rulesTiddeztNoForcedMove: "La règle du déplacement forcé de moulin ne s'applique pas.",
+                rulesBessif: "Učči Bessif :",
+                rulesBessifCombines: "Combine les règles de <strong>TIDDEZT</strong> avec le principe de <strong>victoire inversée</strong>.",
+                rulesBessifMovesStrong: "Déplacements :",
+                rulesBessifMoves: "Uniquement horizontaux/verticaux.",
+                rulesBessifInverseWinStrong: "Victoire Inversée :",
+                rulesBessifInverseWin: "Le joueur gagne si son propre nombre de pions est réduit à moins de trois (c'est-à-dire 0, 1 ou 2 pions), OU si son adversaire est bloqué et qu'il (le joueur qui vient de jouer) a moins de pions sur le plateau que son adversaire.",
+                rulesBessifOpponentChoosesStrong: "Choix du pion à capturer :",
+                rulesBessifOpponentChooses: "Lorsque vous formez un moulin, c'est votre <strong>adversaire</strong> qui doit choisir l'un de ses propres pions que vous allez capturer.",
+                rulesBessifForcedMoveStrong: "Déplacement forcé pour former un moulin :",
+                rulesBessifForcedMove: "La règle du déplacement forcé de moulin s'applique.",
+                footerHeritage: "Patrimoine Culturel Amazigh • Jeu Traditionnel Kabyle",
+                footerCreator: "Créé par",
+                congratulations: "Félicitations !",
+                winnerMessage: "a gagné !",
+                replay: "Rejouer",
+                statusPlayerTurn: "Au tour de",
+                statusChooseCapture: "choisissez un pion de",
+                statusToCapture: "à capturer.",
+                statusChooseSacrifice: "doit choisir un de ses pions à sacrifier.",
+                statusPlacementPhase: "Phase de placement : Au tour de",
+                statusMovePhase: "Phase de déplacement : Au tour de",
+                statusGameOver: "Fin de partie !",
+                statusAlreadyOccupied: "Cette case est déjà occupée !",
+                statusNoPiecesToPlace: "Vous n'avez plus de pions à placer !",
+                statusPlacementAlignForbidden: "Alignement de 3 interdit pendant le placement !",
+                statusYourPiecesTurn: "C'est le tour de vos pions !",
+                statusSelectYourPiece: "Veuillez sélectionner un de vos pions.",
+                statusInvalidMove: "Mouvement invalide.",
+                statusMustMakeMill: "Vous devez faire un moulin si possible !",
+                statusChooseOwnPieceToSacrifice: "Vous devez choisir un de VOS pions à sacrifier !",
+                statusChooseOpponentPieceToCapture: "Vous devez choisir un pion de l'ADVERSAIRE à capturer !",
+                aiCannotMove: "L'ordinateur ne peut pas bouger et perd la partie !",
+                computer: "L'ordinateur",
+                difficultyEasy: "Facile",
+                difficultyMedium: "Moyen",
+                difficultyHard: "Difficile",
+                youLost: "Vous avez perdu 😭",
+                aiWinsMessage: "a gagné !",
+                surrenderConfirm: "Êtes-vous sûr de vouloir abandonner ?",
+                surrenderMessage: "a abandonné !"
+            },
+            kab: {
+                surrender: "Mayna",
+                confirm: "Yahwa",
+                cancel: "Uhu",
+                defaultPlayer1: "Amyurar 1",
+                defaultPlayer2: "Amyurar 2",
+                defaultComputerName: "Aselkim",
+                defaultHumanName: "Amdan",
+                appTitle: "Tiddas - Urar ",
+                chooseVersion: "Fren acu n tiddest ara turareḍ :",
+                tiddeztTitle: "TIDDEZT",
+                tiddeztDesc: "Yerbeḥ win yeččan ileqqafen.",
+                bessifTitle: "Učči Bessif",
+                bessifDesc: "Am ilugan n TIDDEZT, maca yerebḥ win i wummi mmeččen ileqqafen.",
+                howToPlay: "Amek tebɣiḍ ad turareḍ ?",
+                playOnline: "Urar s internet",
+                playOnlineDesc: "Ussan-a",
+                playAI: "Urar mgal aselkim",
+                playAIDesc: "Urar weḥdek",
+                playOffline: "Urar war internet",
+                playOfflineDesc: "Urar d umeddakul",
+                backToVersions: "Tuɣalin ɣer uxtiri",
+                chooseAIDifficulty: "Fren aswir n uselkim",
+                difficultyEasyDesc: "Aselkim yetturar kan akka!",
+                difficultyMediumDesc: "Aselkim yetturar swaswa kan",
+                difficultyHardDesc: "Aselkim yewɛeṛ ad t-trebḥeḍ",
+                backToModes: "Tuɣalin ɣer tegnatin",
+                playerSetup: "Aheggi n yemyurar",
+                playerNamesTitle: "Ismawen n yemyurar",
+                chooseYourColorTitle: "Fren ini-k",
+                playerHumanName: "Isem n umyurar (Amdan) :",
+                player1NameLabel: "Isem n umyurar 1 (Aberkan) :",
+                player2NameLabel: "Isem n umyurar 2 (Amellal) :",
+                yourNamePlaceholder: "Isem-ik",
+                player2Placeholder: "Amyurar 2",
+                yourColor: "Ini-k",
+                aiColor: "Ini n uselkim",
+                player1Color: "Aberkan (Amyurar 1)",
+                player2Color: "Amellal (Amyurar 2)",
+                playButton: "Urar",
+                gameVersion: "Tawsit:",
+                aiDifficultyDisplayLabel: "Aswir:",
+                ephemeralMill: "Tlata S Ya !",
+                ephemeralCaptureNormal: "Awi-d Wa !",
+                ephemeralCaptureBessif: "Ddem wa !",
+                ephemeralMovePhase: "Tallit n unaqel !",
+                player1DisplayName: "Amyurar 1 (Aberkan)",
+                player2DisplayName: "Amyurar 2 (Amellal)",
+                stones: "Ileqqafen",
+                eaten: "Yečča",
+                newGame: "Urar amaynut",
+                restartGame: "Ɛiwed",
+                gameRulesTitle: "Ilugan n wurar",
+                rulesGeneral: "Ilugan s amata n Tiddas :",
+                rulesObjectiveStrong: "Iswi :",
+                rulesObjective: "Iswi amenzu, yal ma yetellet yiwen ileqqafen-is ad yemmečč yiwen uleqqaf n wexṣim, neɣ aḥbas-is iwakken ur izmer ara ad inaqel. Di tewsit n Učči bessif, yerebḥ win i wummi mmeččen ileqqafen-is.",
+                rulesPiecesStrong: "Ileqqafen :",
+                rulesPieces: "Yal amyurar yesɛa 10 n yileqqafen. Amyurar 1 (Aberkan) yettbdu d amezwaru.",
+                rulesPhasesStrong: "Talliyin n wurar :",
+                rulesPlacementPhaseStrong: "Tallit n userrasu :",
+                rulesPlacementPhase: "Imyuraren srusuyen s nnuba (yiwen/yiwen uleqqaf). Tallit-a tekfa mi rsen i 20 n yileqqafen.",
+                rulesMovePhaseStrong: "Tallit n unaqel :",
+                rulesMovePhase: "Mi rsen yakk ileqqafen, imyuraren ad bdun ad ttnaqalen ileqqafen ɣer texxamin yexlan yellan ɣer yidis yexlan.",
+                rulesMillStrong: "Atellet :",
+                rulesMill: "Aseddukel n <strong>tlata n yileqqafen</strong> kan n yiwen yini (s teɣzi neɣ s tehri).",
+                rulesCaptureStrong: "Učči :",
+                rulesCapture: "Ma yesdukel amyurar tlata ileqqafen, yezmer ad yečč aleqqaf n wexṣim-is.",
+                rulesCapturePlacementRestrictionStrong: "Yegdel ad tesdukleḍ 3 deg usersu :",
+                rulesCapturePlacementRestriction: "Yegdel ad tserseḍ aleqqaf iwakken ad tesdukleḍ tlata. Daymi, ulac Učči deg tallit n usersu. Učči tettili kan deg tallit n unaqel.",
+                rulesCaptureAllPiecesStrong: "Akk ileqqafen zemren ad mmeččen :",
+                rulesCaptureAllPieces: "Deg yakk tiwsiyin, <strong>akk ileqqafen zemren ad mmeččen</strong>, ula ma llan deg utellet.",
+                rulesForcedMoveStrong: "atellet s tmara:",
+                rulesForcedMove: "Deg tallit n unaqel, ma yella umyurar yezmer ad itellet, ilaq-as ad t-yexdem. Ma yella aṭas n yiberdan, ad yefren yiwen.",
+                rulesDifferences: "Imgired gar tewsiyin :",
+                rulesDifferencesIntro: "Yal tawsit tesɛa ilugan-is :",
+                rulesTiddezt: "TIDDEZT :",
+                rulesTiddeztMovesStrong: "Anaqel :",
+                rulesTiddeztMoves: "Kan s teɣzi neɣ s tehri.",
+                rulesTiddeztCapturesStrong: "Učči :",
+                rulesTiddeztCaptures: "Win yesduklen tlata ad yefren aleqqaf n wexṣim-is ara yečč.",
+                rulesTiddeztWinStrong: "Arbaḥ :",
+                rulesTiddeztWin: "yerbeḥ win yeččan.",
+                rulesTiddeztNoForcedMoveStrong: "Ulac atellet s tmara :",
+                rulesTiddeztNoForcedMove: "Alugen n lmakala bessif ur ttilin ara.",
+                rulesBessif: "Učči Bessif :",
+                rulesBessifCombines: "Tesdukel ilugan n <strong>TIDDEZT</strong> d umenzay n <strong>A werbaḥ s wexṣar</strong>.",
+                rulesBessifMovesStrong: "Anaqel :",
+                rulesBessifMoves: "Kan s teɣzi neɣ s tehri.",
+                rulesBessifInverseWinStrong: "Arbaḥ s wexṣar :",
+                rulesBessifInverseWin: "Amyurar ad irebḥ ma yella gran-as-d ala sin (2) ileqqafen, NEƔ ma yella axṣim-is ur yezmir ara ad inaqel, u netta (win i d-yuraren) yesɛa drus n yileqqafen.",
+                rulesBessifOpponentChoosesStrong: "Axṣim ad yefren :",
+                rulesBessifOpponentChooses: "Ma yella tetelteḍ, d <strong>axṣim-ik</strong> ara d-ifernen aleqqaf-is ara teččeḍ.",
+                rulesBessifForcedMoveStrong: "atellet s tmara :",
+                rulesBessifForcedMove: "Ur d ak d iṣaḥ ara ad tenaqleḍ alqqaf ɣer w anda ur tettellit ara ma yella yezmer.",
+                footerHeritage: "Adles n Imaziɣen • Urar Aqbur n Leqbayel",
+                footerCreator: "Yexdem-it",
+                congratulations: "Ayuuuuz!",
+                winnerMessage: "yerbeḥ !",
+                replay: "Ɛiwed urar",
+                statusPlayerTurn: "D nnuba n",
+                statusChooseCapture: "fren aleqqaf n",
+                statusToCapture: "ad teččeḍ.",
+                statusChooseSacrifice: "ilaq-as ad yefren aleqqaf-is ara yefk.",
+                statusPlacementPhase: "Aserrasu : D nnuba n",
+                statusMovePhase: "Anaqel : D nnuba n",
+                statusGameOver: "Yekfa w urar !",
+                statusAlreadyOccupied: "taxxamt-a teččur !",
+                statusNoPiecesToPlace: "Ur k-d-qqimen ara yileqqafen !",
+                statusPlacementAlignForbidden: "D awezɣi ad tesdukleḍ 3 deg userrasu !",
+                statusYourPiecesTurn: "D nnuba n yileqqafen-ik !",
+                statusSelectYourPiece: "Fren yiwen uleqqaf-ik.",
+                statusInvalidMove: "Ur d ak d-iṣaḥ ara.",
+                statusMustMakeMill: "Ilaq-ak ad tesdukleḍ tlata ma yella tezmireḍ !",
+                statusChooseOwnPieceToSacrifice: "Ilaq-ak ad teferneḍ yiwen uleqqaf-IK ara tefkeḍ !",
+                statusChooseOpponentPieceToCapture: "Ilaq-ak ad teferneḍ aleqqaf n WEXṢIM-IK !",
+                aiCannotMove: "Aselkim yeḥbes, yexṣer !",
+                computer: "Aselkim",
+                difficultyEasy: "Aḥlawan",
+                difficultyMedium: "Alemmas",
+                difficultyHard: "Aquran",
+                youLost: "Txesreḍ 😭",
+                aiWinsMessage: "yerbeḥ !",
+                surrenderConfirm: "Tebɣiḍ ad tefkeḍ Mayna?",
+                surrenderMessage: "yefka Mayna !"
+            }
+        };
+
+        // --- MODAL FUNCTIONS ---
+        function showConfirmationModal(titleKey, messageKey, onConfirm) {
+            modalTitle.textContent = translations[currentLanguage][titleKey];
+            modalMessage.textContent = translations[currentLanguage][messageKey];
+            modalConfirmBtn.textContent = translations[currentLanguage]['confirm'];
+            modalCancelBtn.textContent = translations[currentLanguage]['cancel'];
+            onConfirmCallback = onConfirm;
+            confirmationModal.classList.add('active');
+        }
+
+        function hideConfirmationModal() {
+            confirmationModal.classList.remove('active');
+            onConfirmCallback = null;
+        }
+
+        function showRulesModal() {
+            document.querySelectorAll('.rules-content').forEach(el => el.style.display = 'none');
+            const currentRules = document.querySelector(`.rules-content[lang="${currentLanguage}"]`);
+            if (currentRules) {
+                currentRules.style.display = 'block';
+            }
+            rulesModal.classList.add('active');
+        }
+
+        function hideRulesModal() {
+            rulesModal.classList.remove('active');
+        }
+
+        // --- DISPLAY AND UI FUNCTIONS ---
+        function updateLanguage(lang) {
+            const oldLang = currentLanguage;
+            currentLanguage = lang;
+            document.documentElement.lang = lang; 
+
+            if (player1Name === translations[oldLang].defaultPlayer1) {
+                player1Name = translations[lang].defaultPlayer1;
+                player1NameInput.value = '';
+            }
+            if (player2Name === translations[oldLang].defaultPlayer2) {
+                player2Name = translations[lang].defaultPlayer2;
+                player2NameInput.value = '';
+            }
+             if (player2Name === translations[oldLang].defaultComputerName) {
+                player2Name = translations[lang].defaultComputerName;
+            }
+            if (player1Name === translations[oldLang].defaultHumanName && gameMode === 'ai') {
+                player1Name = translations[lang].defaultHumanName;
+                player1NameInput.value = '';
+            }
+
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.dataset.i18n;
+                const translation = translations[lang][key];
+                if (translation !== undefined) {
+                    // For elements that might contain other elements (like buttons with icons and spans)
+                    // we find the innermost span to update its text.
+                    let target = el.querySelector('span:not([data-i18n])') || el;
+                    target.innerHTML = translation;
+                }
+            });
+
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                el.placeholder = translations[lang][el.dataset.i18nPlaceholder] || el.dataset.i18nPlaceholder;
+            });
+            document.title = translations[lang].appTitle;
+            
+            if (state && !state.winner) {
+                updateStatus();
+                updatePlayerNamesDisplay();
+            }
+            updateColorOptionSelection(humanPlayerId);
+            
+            if (rulesModal.classList.contains('active')) {
+                showRulesModal();
+            }
+        }
+
+        function showScreen(screenId) {
+            currentScreen = screenId;
+            allScreens.forEach(screen => screen.classList.remove('active'));
+            document.getElementById(screenId)?.classList.add('active');
+
+            if (screenId === 'game-play-area') {
+                mainHeader.classList.add('hidden');
+            } else {
+                mainHeader.classList.remove('hidden');
+            }
+
+            if (screenId === 'player-setup-area') {
+                const isAiMode = gameMode === 'ai';
+                player2NameGroup.style.display = isAiMode ? 'none' : 'flex';
+                colorChoiceSection.style.display = isAiMode ? 'flex' : 'none';
+                player1NameLabel.textContent = translations[currentLanguage][isAiMode ? 'playerHumanName' : 'player1NameLabel'];
+                player1NameInput.value = (player1Name === translations[currentLanguage].defaultHumanName || player1Name === translations[currentLanguage].defaultPlayer1) ? '' : player1Name;
+                player2NameInput.value = (player2Name === translations[currentLanguage].defaultPlayer2) ? '' : player2Name;
+                
+                if (isAiMode) {
+                    player2Name = translations[currentLanguage].defaultComputerName;
+                } else {
+                    player2Name = translations[currentLanguage].defaultPlayer2;
+                }
+                updateColorOptionSelection(humanPlayerId);
+            }
+        }
+        
+        function updateColorOptionSelection(selectedPlayerId) {
+            colorOptions.forEach(option => {
+                const id = parseInt(option.dataset.player);
+                const isSelected = id === selectedPlayerId;
+                option.classList.toggle('selected', isSelected);
+                option.querySelector('input[type="radio"]').checked = isSelected;
+                const span = option.querySelector('span');
+                const colorName = translations[currentLanguage][`player${id}Color`].split(' ')[0];
+                if (gameMode === 'ai') {
+                    span.textContent = isSelected ? `${translations[currentLanguage].yourColor} (${colorName})` : `${translations[currentLanguage].aiColor} (${colorName})`;
+                } else {
+                    span.textContent = translations[currentLanguage][`player${id}Color`];
+                }
+            });
+        }
+
+        function triggerConfetti() {
+            const duration = 5 * 1000;
+            const animationEnd = Date.now() + duration;
+            const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 1002 };
+
+            function randomInRange(min, max) {
+                return Math.random() * (max - min) + min;
+            }
+
+            const interval = setInterval(function() {
+                const timeLeft = animationEnd - Date.now();
+                if (timeLeft <= 0) {
+                    return clearInterval(interval);
+                }
+                const particleCount = 50 * (timeLeft / duration);
+                confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
+                confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
+            }, 250);
+        }
+
+        function showWinnerAnimation(message, name) {
+            winnerOverlay.querySelector('.winner-message').textContent = message;
+            winnerNameElement.textContent = name;
+            winnerOverlay.classList.add('active');
+            triggerConfetti();
+        }
+        
+        function hideWinnerAnimation() {
+            winnerOverlay.classList.remove('active');
+            showScreen('version-selection-area');
+        }
+
+        function showStatusError(messageKey) {
+            const originalText = statusDiv.textContent;
+            statusDiv.textContent = translations[currentLanguage][messageKey] || messageKey;
+            statusDiv.classList.add('status-error');
+            setTimeout(() => {
+                statusDiv.classList.remove('status-error');
+                statusDiv.textContent = originalText;
+                updateStatus();
+            }, 1500);
+        }
+
+        function showEphemeralBubbleMessage(messageKey, iconClass = '', duration = 2000) {
+            ephemeralMessageBubble.innerHTML = `${iconClass ? `<i class="${iconClass}"></i>` : ''} <span>${translations[currentLanguage][messageKey] || messageKey}</span>`;
+            ephemeralMessageBubble.classList.add('active');
+            setTimeout(() => ephemeralMessageBubble.classList.remove('active'), duration);
+        }
+
+        // --- GAME INITIALIZATION AND LOGIC ---
+        function initState() {
+            state = {
+                board: Array(SIZE * SIZE).fill(null),
+                phase: "placement",
+                turn: 2, // White (Player 2) starts
+                turnForCapture: null,
+                counts: { 1: PIECES, 2: PIECES },
+                captured: { 1: 0, 2: 0 },
+                selected: null,
+                captureMode: false,
+                winner: null,
+                highlightedMills: [],
+                pendingCaptures: 0, 
+            };
+        }
+
+        function startGame() {
+            initState();
+            if (gameMode === 'ai') {
+                player1Name = player1NameInput.value.trim() || translations[currentLanguage].defaultHumanName;
+                player2Name = translations[currentLanguage].defaultComputerName;
+                aiPlayerId = (humanPlayerId === 1) ? 2 : 1;
+            } else {
+                player1Name = player1NameInput.value.trim() || translations[currentLanguage].defaultPlayer1;
+                player2Name = player2NameInput.value.trim() || translations[currentLanguage].defaultPlayer2;
+                humanPlayerId = 1;
+                aiPlayerId = null;
+            }
+
+            const variantInfoEl = document.getElementById('game-variant-info');
+            const difficultyInfoEl = document.getElementById('game-difficulty-info');
+            const variantTitleKey = variant === 'tiddezt-no-diag' ? 'tiddeztTitle' : 'bessifTitle';
+            variantInfoEl.innerHTML = `<strong>${translations[currentLanguage].gameVersion}</strong> ${translations[currentLanguage][variantTitleKey]}`;
+
+            if (gameMode === 'ai') {
+                const difficultyNameKey = {1: 'difficultyEasy', 2: 'difficultyMedium', 3: 'difficultyHard'}[aiDifficulty];
+                difficultyInfoEl.innerHTML = `<strong>${translations[currentLanguage].aiDifficultyDisplayLabel}</strong> ${translations[currentLanguage][difficultyNameKey]}`;
+            } else {
+                difficultyInfoEl.innerHTML = '';
+            }
+
+            showScreen('game-play-area');
+            renderBoard();
+            updateInfo();
+            updateStatus();
+            updatePlayerNamesDisplay();
+            triggerNextAction();
+        }
+
+        function renderBoard() {
+            boardDiv.innerHTML = '';
+            for(let i = 0; i < SIZE * SIZE; i++) {
+                const cell = document.createElement('div');
+                cell.className = "cell";
+                cell.dataset.idx = i;
+                if((Math.floor(i / SIZE) + i % SIZE) % 2 !== 0) {
+                    cell.classList.add("dark-cell");
+                }
+                if(state.selected === i) {
+                    cell.classList.add("selected");
+                }
+                if (!state.captureMode && state.selected !== null && state.board[i] === null && isAdjacent(state.selected, i)) {
+                    cell.classList.add("possible-move");
+                }
+                if (state.highlightedMills.includes(i)) {
+                    cell.classList.add("mill-highlight");
+                }
+                if(state.board[i]) {
+                    const stone = document.createElement('div');
+                    stone.className = `stone player${state.board[i]}`;
+                    if(state.selected === i) stone.classList.add("selected");
+                    cell.appendChild(stone);
+                }
+                cell.onclick = () => onCellClick(i);
+                boardDiv.appendChild(cell);
+            }
+
+            if(state.captureMode) {
+                const playerWhosePiecesAreTargetable = variantConfig[variant].isInverseWin ? state.turnForCapture : (3 - state.turnForCapture);
+                for(let i = 0; i < SIZE * SIZE; i++) {
+                    if(state.board[i] === playerWhosePiecesAreTargetable) { 
+                        boardDiv.children[i].classList.add("capturable");
+                        boardDiv.children[i].onclick = () => onCellClick(i);
+                    } else {
+                        boardDiv.children[i].onclick = null; 
+                    }
+                }
+            } else {
+                for(let i = 0; i < SIZE * SIZE; i++) {
+                    boardDiv.children[i].onclick = () => onCellClick(i);
+                }
+            }
+            updateActivePlayerDisplay();
+        }
+
+        function updateInfo() {
+            p1Count.textContent = state.counts[1];
+            p2Count.textContent = state.counts[2];
+            p1Capt.textContent = state.captured[1];
+            p2Capt.textContent = state.captured[2];
+        }
+        
+        function updatePlayerNamesDisplay() {
+            const p1ColorName = translations[currentLanguage].player1Color.split(' ')[0];
+            const p2ColorName = translations[currentLanguage].player2Color.split(' ')[0];
+            let p1Text, p2Text;
+            if (gameMode === 'ai') {
+                p1Text = humanPlayerId === 1 ? `${player1Name} (${p1ColorName})` : `${player2Name} (${p1ColorName})`;
+                p2Text = humanPlayerId === 2 ? `${player1Name} (${p2ColorName})` : `${player2Name} (${p2ColorName})`;
+            } else {
+                p1Text = `${player1Name} (${p1ColorName})`;
+                p2Text = `${player2Name} (${p2ColorName})`;
+            }
+            p1DisplayName.textContent = p1Text;
+            p2DisplayName.textContent = p2Text;
+        }
+
+        function updateStatus() {
+            if (state.winner) {
+                statusDiv.textContent = translations[currentLanguage].statusGameOver;
+                return;
+            }
+            
+            const currentPlayerName = (state.turn === 1) ? (p1DisplayName.textContent.split(' ')[0]) : (p2DisplayName.textContent.split(' ')[0]);
+
+            if (state.captureMode) {
+                const totalCaptures = state.captured[state.turnForCapture] + state.pendingCaptures;
+                const currentCaptureNumber = totalCaptures - state.pendingCaptures + 1;
+                const captureCountInfo = state.pendingCaptures > 1 ? ` (${currentCaptureNumber} / ${totalCaptures})` : '';
+                
+                const playerWhoChoosesName = (state.turnForCapture === 1) ? (p1DisplayName.textContent.split(' ')[0]) : (p2DisplayName.textContent.split(' ')[0]);
+
+                if (variantConfig[variant].isInverseWin) {
+                    statusDiv.textContent = `${playerWhoChoosesName} ${translations[currentLanguage].statusChooseSacrifice}${captureCountInfo}`;
+                } else {
+                    const playerWhosePieceIsCapturedName = (state.turnForCapture === 1) ? (p2DisplayName.textContent.split(' ')[0]) : (p1DisplayName.textContent.split(' ')[0]);
+                    statusDiv.textContent = `${playerWhoChoosesName}, ${translations[currentLanguage].statusChooseCapture} ${playerWhosePieceIsCapturedName} ${translations[currentLanguage].statusToCapture}${captureCountInfo}`;
+                }
+            } else if (state.phase === "placement") {
+                statusDiv.textContent = `${translations[currentLanguage].statusPlacementPhase} ${currentPlayerName}.`;
+            } else {
+                statusDiv.textContent = `${translations[currentLanguage].statusMovePhase} ${currentPlayerName}.`;
+            }
+        }
+       
+        function updateActivePlayerDisplay() {
+            const activePlayer = state.captureMode ? state.turnForCapture : state.turn;
+            p1Info.classList.toggle('active-player', activePlayer === 1);
+            p2Info.classList.toggle('active-player', activePlayer === 2);
+        }
+        
+        function onCellClick(i) {
+            if (state.winner) return; 
+            const playerWhoShouldAct = state.captureMode ? state.turnForCapture : state.turn;
+            if (gameMode === 'ai' && playerWhoShouldAct === aiPlayerId) {
+                return;
+            }
+            if (state.captureMode) {
+                handleCaptureClick(i);
+                return;
+            }
+            if (state.phase === 'placement') {
+                handlePlacement(i);
+            } else {
+                handleMove(i);
+            }
+        }
+
+        function handleCaptureClick(i) {
+            if (!state.captureMode || state.winner) return;
+            const pieceOwner = state.board[i];
+            const isInverseWin = variantConfig[variant].isInverseWin;
+            if (isInverseWin) {
+                if (pieceOwner !== state.turnForCapture) {
+                    showStatusError('statusChooseOwnPieceToSacrifice');
+                    return;
+                }
+            } else {
+                if (pieceOwner !== (3 - state.turnForCapture)) {
+                    showStatusError('statusChooseOpponentPieceToCapture');
+                    return;
+                }
+            }
+            handleCapture(i);
+        }
+
+        function handlePlacement(i) {
+            if (state.board[i] !== null) { showStatusError('statusAlreadyOccupied'); return; }
+            if (state.counts[state.turn] <= 0) { showStatusError('statusNoPiecesToPlace'); return; }
+            const tempBoard = [...state.board];
+            tempBoard[i] = state.turn;
+            if (getFormedMills(i, state.turn, tempBoard).length > 0) { showStatusError('statusPlacementAlignForbidden'); return; }
+            state.board[i] = state.turn;
+            state.counts[state.turn]--;
+            animateStonePlacement(i, state.turn);
+            endTurn();
+        }
+
+        function handleMove(i) {
+            if (state.selected === null) {
+                if (state.board[i] === state.turn) {
+                    state.selected = i;
+                    renderBoard();
+                    updateStatus();
+                } else {
+                    showStatusError(state.board[i] ? 'statusYourPiecesTurn' : 'statusSelectYourPiece');
+                }
+            } 
+            else {
+                const from = state.selected;
+                const to = i;
+                if (to === from) { state.selected = null; renderBoard(); updateStatus(); return; }
+                if (state.board[to] === state.turn) { state.selected = to; renderBoard(); updateStatus(); return; }
+                if (state.board[to] === null && isAdjacent(from, to)) {
+                    if (variantConfig[variant].forceMillMove) {
+                        const allPossibleMillMovesForPlayer = getPossibleMillMoves(state.turn, state.board);
+                        const tempBoard = simulateMove(state.board, {from, to}, state.turn);
+                        const isCurrentMoveAMill = findAllMills(state.board, tempBoard, from, to, state.turn).length > 0;
+                        if (allPossibleMillMovesForPlayer.length > 0 && !isCurrentMoveAMill) {
+                            showStatusError('statusMustMakeMill');
+                            state.selected = null; renderBoard(); updateStatus(); return;
+                        }
+                    }
+                    
+                    animateStoneMove(from, to); 
+                    
+                    setTimeout(() => {
+                        const originalBoard = [...state.board];
+                        state.board[to] = state.turn;
+                        state.board[from] = null;
+                        state.selected = null;
+
+                        const formedMills = findAllMills(originalBoard, state.board, from, to, state.turn);
+                        
+                        if (formedMills.length > 0) { 
+                            state.captureMode = true; 
+                            state.pendingCaptures = formedMills.length;
+                            state.turnForCapture = variantConfig[variant].isInverseWin ? (3 - state.turn) : state.turn;
+                            state.highlightedMills = formedMills.flat();
+
+                            const emoji = variantConfig[variant].isInverseWin ? 'far fa-frown' : 'far fa-grin-beam';
+                            showEphemeralBubbleMessage('ephemeralMill', emoji);
+                            
+                            renderBoard();
+                            setTimeout(() => { state.highlightedMills = []; renderBoard(); }, 1500);
+
+                            updateStatus();
+                            triggerNextAction();
+                        } else {
+                            endTurn();
+                        }
+                    }, 300);
+                } 
+                else {
+                    showStatusError('statusInvalidMove');
+                    state.selected = null; renderBoard(); updateStatus();
+                }
+            }
+        }
+
+        function handleCapture(idxToCapture) {
+            if (!state.captureMode || state.winner) return;
+            const playerWhoGetsPoint = variantConfig[variant].isInverseWin ? (3 - state.turnForCapture) : state.turnForCapture;
+            
+            animateStoneCapture(idxToCapture);
+            const messageKey = variantConfig[variant].isInverseWin ? 'ephemeralCaptureBessif' : 'ephemeralCaptureNormal';
+            showEphemeralBubbleMessage(messageKey, 'fas fa-mouse-pointer');
+
+            setTimeout(() => {
+                state.board[idxToCapture] = null;
+                state.captured[playerWhoGetsPoint]++;
+                state.pendingCaptures--;
+
+                if (state.pendingCaptures > 0) {
+                    updateStatus();
+                    renderBoard();
+                    triggerNextAction();
+                } else {
+                    state.captureMode = false; 
+                    state.turnForCapture = null;
+                    state.highlightedMills = [];
+                    endTurn();
+                }
+            }, 500);
+        }
+
+        function handleSurrender() {
+            if (state.winner) return;
+            const winnerId = 3 - state.turn;
+            state.winner = winnerId;
+            const winnerName = (winnerId === 1) ? p1DisplayName.textContent.split(' ')[0] : p2DisplayName.textContent.split(' ')[0];
+            const winMessage = `${winnerName} ${translations[currentLanguage].winnerMessage}`;
+            const surrendererName = state.turn === 1 ? p1DisplayName.textContent.split(' ')[0] : p2DisplayName.textContent.split(' ')[0];
+            statusDiv.textContent = `${surrendererName} ${translations[currentLanguage].surrenderMessage}`;
+            showWinnerAnimation(translations[currentLanguage].congratulations, winMessage);
+        }
+
+        function endTurn() {
+            state.turn = 3 - state.turn;
+            if (state.phase === 'placement' && state.counts[1] === 0 && state.counts[2] === 0) {
+                state.phase = 'move';
+                showEphemeralBubbleMessage('ephemeralMovePhase', "fas fa-exchange-alt");
+            }
+            renderBoard();
+            updateInfo();
+            checkWinner(); 
+            if(!state.winner){
+                updateStatus();
+                triggerNextAction();
+            }
+        }
+
+        function endGame() {
+            let finalMessage = "";
+            let finalWinnerName = "";
+            const winnerName = (state.winner === 1) ? p1DisplayName.textContent.split(' ')[0] : p2DisplayName.textContent.split(' ')[0];
+            
+            if (gameMode === 'ai' && state.winner === aiPlayerId) {
+                finalMessage = translations[currentLanguage].youLost;
+                finalWinnerName = `${winnerName} ${translations[currentLanguage].aiWinsMessage}`;
+            } else {
+                finalMessage = translations[currentLanguage].congratulations;
+                finalWinnerName = `${winnerName} ${translations[currentLanguage].winnerMessage}`;
+            }
+            showWinnerAnimation(finalMessage, finalWinnerName);
+            updateStatus();
+        }
+        
+        function triggerNextAction() {
+            if (state.winner) return;
+            const playerToAct = state.captureMode ? state.turnForCapture : state.turn;
+
+            if (gameMode === 'ai' && playerToAct === aiPlayerId) {
+                const delay = state.captureMode ? 800 : 500;
+                setTimeout(() => { makeAiMove(); }, delay);
+            }
+        }
+
+        // --- GAME RULES AND CHECKS ---
+        function findAllMills(originalBoard, newBoard, from, to, player) {
+            const millsBefore = new Set();
+            for (let i = 0; i < SIZE * SIZE; i++) {
+                if (originalBoard[i] === player) {
+                    getFormedMills(i, player, originalBoard).forEach(mill => millsBefore.add(mill.sort().join(',')));
+                }
+            }
+
+            const millsAfter = new Set();
+            for (let i = 0; i < SIZE * SIZE; i++) {
+                if (newBoard[i] === player) {
+                    getFormedMills(i, player, newBoard).forEach(mill => millsAfter.add(mill.sort().join(',')));
+                }
+            }
+
+            const newlyFormedMills = [];
+            for (const millString of millsAfter) {
+                if (!millsBefore.has(millString)) {
+                    newlyFormedMills.push(millString.split(',').map(Number));
+                }
+            }
+            
+            const uniqueNewlyFormedMills = [];
+            const seen = new Set();
+            for(const mill of newlyFormedMills){
+                const sortedMill = [...mill].sort((a,b)=>a-b), key = sortedMill.join(',');
+                if(!seen.has(key)){ uniqueNewlyFormedMills.push(sortedMill); seen.add(key); }
+            }
+            return uniqueNewlyFormedMills;
+        }
+
+        function getFormedMills(idx, player, board) {
+            const mills = [], r = Math.floor(idx / SIZE), c = idx % SIZE;
+            const directions = [[[0, -1], [0, 1]], [[-1, 0], [1, 0]]];
+            for (const [dir1, dir2] of directions) {
+                let line = [idx];
+                for (let i = 1; i < SIZE; i++) { 
+                    const nr = r + dir1[0] * i, nc = c + dir1[1] * i, nIdx = nr * SIZE + nc;
+                    if (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE && board[nIdx] === player) { line.unshift(nIdx); } else break;
+                }
+                for (let i = 1; i < SIZE; i++) { 
+                    const nr = r + dir2[0] * i, nc = c + dir2[1] * i, nIdx = nr * SIZE + nc;
+                    if (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE && board[nIdx] === player) { line.push(nIdx); } else break;
+                }
+                if (line.length === 3) {
+                    mills.push([...line].sort((a,b) => a-b));
+                }
+            }
+            return mills;
+        }
+        
+        function isAdjacent(a, b) {
+            const r1 = Math.floor(a / SIZE), c1 = a % SIZE;
+            const r2 = Math.floor(b / SIZE), c2 = b % SIZE;
+            return (Math.abs(r1 - r2) === 1 && c1 === c2) || (Math.abs(c1 - c2) === 1 && r1 === r2);
+        }
+
+        function canPlayerMove(player, board) {
+            if (board.filter(p => p === player).length < 3) return false;
+            for (let i = 0; i < SIZE * SIZE; i++) {
+                if (board[i] === player) {
+                    for (let j = 0; j < SIZE * SIZE; j++) {
+                        if (board[j] === null && isAdjacent(i, j)) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function checkWinner() {
+            if (state.phase !== 'move') return;
+            const p1Pieces = state.board.filter(p => p === 1).length;
+            const p2Pieces = state.board.filter(p => p === 2).length;
+            const p1CanMove = canPlayerMove(1, state.board);
+            const p2CanMove = canPlayerMove(2, state.board);
+            
+            if (variantConfig[variant].isInverseWin) {
+                if (p1Pieces < 3 || !p1CanMove) state.winner = 1;
+                else if (p2Pieces < 3 || !p2CanMove) state.winner = 2;
+            } else {
+                if (p2Pieces < 3 || !p2CanMove) state.winner = 1;
+                else if (p1Pieces < 3 || !p1CanMove) state.winner = 2;
+            }
+            if (state.winner) endGame();
+        }
+        
+        function countPlayerMoves(player, board) {
+            if (state.phase === 'placement') return board.filter(p => p === null).length;
+            let moveCount = 0;
+            for (let i = 0; i < SIZE * SIZE; i++) {
+                if (board[i] === player) {
+                    for (let j = 0; j < SIZE * SIZE; j++) {
+                        if (board[j] === null && isAdjacent(i, j)) moveCount++;
+                    }
+                }
+            }
+            return moveCount;
+        }
+
+        // --- ARTIFICIAL INTELLIGENCE ---
+        function getPossibleMillMoves(player, board) {
+            const millMoves = [];
+            const currentPhase = state.phase; 
+            if (currentPhase === 'placement') return [];
+            for (let from = 0; from < SIZE * SIZE; from++) {
+                if (board[from] === player) {
+                    for (let to = 0; to < SIZE * SIZE; to++) {
+                        if (board[to] === null && isAdjacent(from, to)) {
+                            const tempBoard = simulateMove(board, {from, to}, player);
+                            if (findAllMills(board, tempBoard, from, to, player).length > 0) {
+                                millMoves.push({ from, to });
+                            }
+                        }
+                    }
+                }
+            }
+            return millMoves;
+        }
+
+        function makeAiMove() {
+            if (state.winner) return;
+            if (state.captureMode) {
+                const pieceToActOn = aiChoosePieceToActOn();
+                if (pieceToActOn !== null) {
+                    handleCaptureClick(pieceToActOn);
+                }
+                return;
+            }
+            let move = aiFindBestMove();
+            if (state.phase === 'placement') {
+                if (move) { handlePlacement(move.to); } 
+                else { state.winner = humanPlayerId; endGame(); }
+            } else {
+                if (!canPlayerMove(aiPlayerId, state.board)) { 
+                    showStatusError('aiCannotMove'); 
+                    state.winner = humanPlayerId; 
+                    endGame(); 
+                    return; 
+                }
+                if (move) {
+                    state.selected = move.from; 
+                    renderBoard(); 
+                    setTimeout(() => { handleMove(move.to); }, 150);
+                } else { 
+                    state.winner = humanPlayerId; 
+                    endGame(); 
+                }
+            }
+        }
+        
+        function aiChoosePieceToActOn() {
+            const playerWhosePiecesAreTargetable = variantConfig[variant].isInverseWin ? aiPlayerId : humanPlayerId; 
+            const targetablePieces = [];
+            for (let i = 0; i < SIZE * SIZE; i++) { 
+                if (state.board[i] === playerWhosePiecesAreTargetable) {
+                    targetablePieces.push(i); 
+                }
+            }
+            if (targetablePieces.length === 0) return null;
+
+            if (aiDifficulty > 1) {
+                let bestPiece = -1;
+                let bestScore = -Infinity;
+
+                for (const piece of targetablePieces) {
+                    const tempBoard = [...state.board];
+                    tempBoard[piece] = null;
+                    const score = minimax(tempBoard, aiDifficulty, false, humanPlayerId, -Infinity, Infinity);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestPiece = piece;
+                    }
+                }
+                return bestPiece;
+            }
+            return targetablePieces[Math.floor(Math.random() * targetablePieces.length)];
+        }
+
+        function evaluateBoard(board, playerToEvaluate, simulatedWinner) {
+            const opponent = 3 - playerToEvaluate;
+            if (simulatedWinner !== null) {
+                if (simulatedWinner === playerToEvaluate) return 10000;
+                else return -10000;
+            }
+            
+            const playerPieces = board.filter(p => p === playerToEvaluate).length;
+            const opponentPieces = board.filter(p => p === opponent).length;
+            const playerMoves = countPlayerMoves(playerToEvaluate, board);
+            const opponentMoves = countPlayerMoves(opponent, board);
+            
+            let score = 0;
+            score += (playerPieces - opponentPieces) * 200;
+            score += (playerMoves - opponentMoves) * 10;
+            
+            const playerPotentialMills = getPotentialMillsCount(board, playerToEvaluate);
+            const opponentPotentialMills = getPotentialMillsCount(board, opponent);
+            score += (playerPotentialMills - opponentPotentialMills) * 50;
+            
+            if (canPlayerFormMillNextTurn(opponent, board)) {
+                score -= 500;
+            }
+            if (canPlayerFormMillNextTurn(playerToEvaluate, board)) {
+                score += 400;
+            }
+            
+            if (variantConfig[variant].isInverseWin) { 
+                score *= -1; 
+            }
+            
+            return score;
+        }
+        
+        function canPlayerFormMillNextTurn(player, board) {
+            const currentPhase = state.phase; 
+            const possibleMoves = generateAllPossibleMoves(player, board, currentPhase);
+            for (const move of possibleMoves) {
+                const tempBoard = simulateMove(board, move, player);
+                const fromIdx = (move.from !== undefined) ? move.from : move.to;
+                if (findAllMills(board, tempBoard, fromIdx, move.to, player).length > 0) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function getPotentialMillsCount(board, player) {
+            let count = 0; 
+            const lines = [];
+            for (let r = 0; r < SIZE; r++) { for (let c = 0; c < SIZE - 2; c++) { lines.push([r*SIZE+c, r*SIZE+c+1, r*SIZE+c+2]); } }
+            for (let c = 0; c < SIZE; c++) { for (let r = 0; r < SIZE - 2; r++) { lines.push([r*SIZE+c, (r+1)*SIZE+c, (r+2)*SIZE+c]); } }
+
+            for (const line of lines) {
+                let pCount = 0;
+                let eCount = 0;
+                for (const idx of line) { 
+                    if (board[idx] === player) pCount++; 
+                    else if (board[idx] === null) eCount++; 
+                }
+                if (pCount === 2 && eCount === 1) count++;
+            }
+            return count;
+        }
+
+        function minimax(currentBoard, depth, isMaximizingPlayer, currentPlayer, alpha, beta) {
+            const simulatedWinner = getWinnerInState(currentBoard);
+            if (depth === 0 || simulatedWinner !== null) { 
+                return evaluateBoard(currentBoard, aiPlayerId, simulatedWinner); 
+            }
+
+            const opponentPlayer = 3 - currentPlayer;
+            const currentPhase = state.phase; 
+            const possibleMoves = generateAllPossibleMoves(currentPlayer, currentBoard, currentPhase); 
+            
+            if (possibleMoves.length === 0) { 
+                return evaluateBoard(currentBoard, aiPlayerId, opponentPlayer); 
+            }
+
+            let bestEval = isMaximizingPlayer ? -Infinity : Infinity;
+
+            for (const move of possibleMoves) {
+                const newBoard = simulateMove(currentBoard, move, currentPlayer);
+                const from = move.from !== undefined ? move.from : move.to;
+                const formedMills = findAllMills(currentBoard, newBoard, from, move.to, currentPlayer);
+                
+                let eval;
+                if (formedMills.length > 0) {
+                    let captureEval = isMaximizingPlayer ? -Infinity : Infinity;
+                    const playerWhoLosesPiece = variantConfig[variant].isInverseWin ? currentPlayer : opponentPlayer;
+                    const capturablePieces = [];
+                    for(let i=0; i<newBoard.length; i++) { 
+                        if(newBoard[i] === playerWhoLosesPiece) capturablePieces.push(i); 
+                    }
+
+                    if(capturablePieces.length > 0) {
+                        for(const pieceToCapture of capturablePieces) {
+                             const boardAfterCapture = [...newBoard]; 
+                             boardAfterCapture[pieceToCapture] = null;
+                             const currentCaptureEval = minimax(boardAfterCapture, depth - 1, !isMaximizingPlayer, opponentPlayer, alpha, beta);
+                             if (isMaximizingPlayer) { 
+                                 captureEval = Math.max(captureEval, currentCaptureEval); 
+                             } else { 
+                                 captureEval = Math.min(captureEval, currentCaptureEval); 
+                             }
+                        }
+                        eval = captureEval;
+                    } else { 
+                        eval = minimax(newBoard, depth - 1, !isMaximizingPlayer, opponentPlayer, alpha, beta); 
+                    }
+                } else { 
+                    eval = minimax(newBoard, depth - 1, !isMaximizingPlayer, opponentPlayer, alpha, beta); 
+                }
+
+                if (isMaximizingPlayer) { 
+                    bestEval = Math.max(bestEval, eval); 
+                    alpha = Math.max(alpha, eval); 
+                } else { 
+                    bestEval = Math.min(bestEval, eval); 
+                    beta = Math.min(beta, eval); 
+                }
+                if (beta <= alpha) break;
+            }
+            return bestEval;
+        }
+
+        function simulateMove(board, move, player) {
+            const newBoard = [...board];
+            if (move.from !== undefined) { 
+                newBoard[move.from] = null;
+            }
+            newBoard[move.to] = player;
+            return newBoard;
+        }
+
+        function generateAllPossibleMoves(player, board, phase) {
+            const moves = [];
+            if (phase === 'placement') {
+                for (let i = 0; i < SIZE * SIZE; i++) {
+                    if (board[i] === null) {
+                        const tempBoard = simulateMove(board, { to: i }, player);
+                        if (getFormedMills(i, player, tempBoard).length === 0) { 
+                            moves.push({ to: i }); 
+                        }
+                    }
+                }
+            } else {
+                const millMoves = getPossibleMillMoves(player, board); 
+                if (variantConfig[variant].forceMillMove && millMoves.length > 0) {
+                    return millMoves;
+                }
+                for (let i = 0; i < SIZE * SIZE; i++) {
+                    if (board[i] === player) {
+                        for (let j = 0; j < SIZE * SIZE; j++) {
+                            if (board[j] === null && isAdjacent(i, j)) {
+                                moves.push({ from: i, to: j }); 
+                            }
+                        }
+                    }
+                }
+            }
+            return moves;
+        }
+
+        function getWinnerInState(board) {
+            const p1Pieces = board.filter(p => p === 1).length;
+            const p2Pieces = board.filter(p => p === 2).length;
+            const isMovePhase = (board.filter(p => p !== null).length >= PIECES * 2);
+            const p1CanMove = canPlayerMove(1, board);
+            const p2CanMove = canPlayerMove(2, board);
+            
+            const p1Loses = p1Pieces < 3 || (isMovePhase && !p1CanMove);
+            const p2Loses = p2Pieces < 3 || (isMovePhase && !p2CanMove);
+
+            if (variantConfig[variant].isInverseWin) { 
+                if (p1Loses) return 1; 
+                if (p2Loses) return 2; 
+            } else { 
+                if (p1Loses) return 2;
+                if (p2Loses) return 1;
+            }
+            return null;
+        }
+
+        function aiFindBestMove() {
+            const player = aiPlayerId;
+            const opponent = humanPlayerId;
+            const currentPhase = state.phase;
+            const possibleMoves = generateAllPossibleMoves(player, state.board, currentPhase);
+
+            if (possibleMoves.length === 0) return null;
+
+            const millMoves = getPossibleMillMoves(player, state.board);
+            if (millMoves.length > 0) {
+                return millMoves[Math.floor(Math.random() * millMoves.length)];
+            }
+
+            const opponentMillMoves = getPossibleMillMoves(opponent, state.board);
+            if (opponentMillMoves.length > 0) {
+                const blockingMoveTarget = opponentMillMoves[0].to;
+                const blockingMove = possibleMoves.find(move => move.to === blockingMoveTarget);
+                if (blockingMove) {
+                    return blockingMove;
+                }
+            }
+
+            if (aiDifficulty === 1) {
+                return possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+            }
+
+            const depth = aiDifficulty;
+            let bestMove = null;
+            let bestScore = -Infinity;
+
+            for (const move of possibleMoves) {
+                const newBoard = simulateMove(state.board, move, player);
+                const score = minimax(newBoard, depth - 1, false, opponent, -Infinity, Infinity);
+                
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMove = move;
+                }
+            }
+            
+            return bestMove || possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+        }
+
+        // --- ANIMATIONS ---
+        function animateStonePlacement(idx, player) {
+            const cell = boardDiv.children[idx], stone = document.createElement('div');
+            stone.className = `stone player${player} moving`;
+            cell.appendChild(stone);
+            stone.addEventListener('animationend', () => { stone.classList.remove('moving'); }, { once: true });
+        }
+        function animateStoneMove(fromIdx, toIdx) {
+            const stone = boardDiv.children[fromIdx].querySelector('.stone');
+            if (stone) { stone.classList.add('fade-out'); stone.addEventListener('animationend', () => {}, { once: true }); }
+        }
+        function animateStoneCapture(idx) {
+            const stone = boardDiv.children[idx].querySelector('.stone');
+            if (stone) { stone.classList.add('captured'); stone.addEventListener('animationend', () => {}, { once: true }); }
+        }
+
+        // --- EVENT HANDLERS ---
+        document.addEventListener('DOMContentLoaded', () => {
+            updateLanguage('fr');
+
+            languageSelect.addEventListener('change', (e) => updateLanguage(e.target.value));
+            document.querySelectorAll('.version-card').forEach(card => card.addEventListener('click', () => {
+                versionCards.forEach(vc => vc.classList.remove('active'));
+                card.classList.add('active');
+                variant = card.dataset.variant;
+                showScreen('mode-selection-area');
+            }));
+            document.getElementById('play-ai-btn').addEventListener('click', () => { 
+                gameMode = 'ai'; 
+                showScreen('ai-difficulty-selection-area'); 
+            });
+            document.getElementById('play-offline-btn').addEventListener('click', () => { 
+                gameMode = 'local'; 
+                showScreen('player-setup-area'); 
+            });
+            document.querySelectorAll('.difficulty-btn').forEach(btn => btn.addEventListener('click', () => {
+                aiDifficulty = parseInt(btn.dataset.level);
+                showScreen('player-setup-area');
+            }));
+            document.getElementById('start-game-from-setup').addEventListener('click', startGame);
+            document.getElementById('back-to-versions-btn').addEventListener('click', () => showScreen('version-selection-area'));
+            document.getElementById('back-to-modes-btn').addEventListener('click', () => showScreen('mode-selection-area'));
+            document.getElementById('back-to-modes-from-setup-btn').addEventListener('click', () => {
+                if(gameMode === 'ai') showScreen('ai-difficulty-selection-area');
+                else showScreen('mode-selection-area');
+            });
+            colorOptions.forEach(option => option.addEventListener('click', () => {
+                humanPlayerId = parseInt(option.dataset.player);
+                updateColorOptionSelection(humanPlayerId);
+            }));
+            document.getElementById('new-game').addEventListener('click', () => { hideWinnerAnimation(); showScreen('version-selection-area'); });
+            document.getElementById('restart').addEventListener('click', startGame);
+            winnerReplayButton.addEventListener('click', hideWinnerAnimation);
+            
+            surrenderBtn.addEventListener('click', () => {
+                showConfirmationModal('surrender', 'surrenderConfirm', handleSurrender);
+            });
+
+            modalConfirmBtn.addEventListener('click', () => {
+                if (onConfirmCallback) onConfirmCallback();
+                hideConfirmationModal();
+            });
+
+            modalCancelBtn.addEventListener('click', hideConfirmationModal);
+            
+            confirmationModal.addEventListener('click', (e) => {
+                if (e.target === confirmationModal) hideConfirmationModal();
+            });
+            
+            showRulesBtn.addEventListener('click', showRulesModal);
+            rulesCloseBtn.addEventListener('click', hideRulesModal);
+            rulesModal.addEventListener('click', (e) => {
+                if(e.target === rulesModal) hideRulesModal();
+            });
+
+            showScreen('version-selection-area');
+        });
+    </script>
+</body>
+</html>
